@@ -9,7 +9,7 @@
 ## 使用
 
 1. 打开样品单，点击 **Export Sample Excel**，选择全部样品行或当前单内的一家工厂。
-2. 将文件发给工厂，仅编辑蓝色列：Color & Finish、Other Sample Requirements、Sample Ready Date、Factory Feedback。
+2. 将文件发给工厂，仅编辑四个业务字段：Color & Finish、Other Sample Requirements、Sample Ready Date、Factory Feedback。
 3. **由原导出人**打开同一样品单，点击 **Import Sample Updates** 上传返回文件。
 4. 点击 **Preview Changes**。未变化字段隐藏；普通更新默认使用 Excel，清空默认忽略；真正冲突必须选择使用 Excel 或保留 Odoo。
 5. **Confirm Update** 保存，样品单现有消息区记录成功修改。再次导出会包含已保存值。
@@ -17,6 +17,8 @@
 完成日期仅接受正式 Excel 日期或 `YYYY-MM-DD` 文本。TBC、月底完成等说明写在 Factory Feedback。数量和产品识别列仅展示；删除行不会删除 Odoo 记录，不接受新增样品行。
 
 不包含客户信息、规格、认证；表头只包含样品单号。每条样品行占一行。现有 Plug/Logo 放在独立只读参考列，防止把显示附注反复写进可编辑 remarks。系列要求需要先在 Odoo 对应样品行中明确维护，本模块不会从旧 Excel 的位置猜测其适用范围。现有备注图 `x_remark_image` 尚不导出，含重要要求的图片请先明确成文字；产品缩略图不能替代样品要求。
+
+版式沿用原业务模板的浅青色表头、Calibri 加粗字体、黑色细边框、白底数据区和较大产品图；不使用蓝色可编辑区域或隔行底色，不自动复制旧表里的人工绿色标记。
 
 ## Excel 排序与限制
 

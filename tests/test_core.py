@@ -115,6 +115,13 @@ class WorkbookTests(unittest.TestCase):
                                                     date(2026, 11, 18)))
         self.assertEqual(parse_workbook(raw)[1][0]['factory_ready_date'], '2026-11-18')
 
+    def test_empty_fields_are_true_blank_cells(self):
+        raw = build_workbook('SMP-DEMO', 'export', [sample(sample_color='', factory_model='')])
+        book = load_workbook(io.BytesIO(raw))
+        for address in ('C5', 'F5', 'I5'):
+            with self.subTest(address=address):
+                self.assertIsNone(book['Samples'][address].value)
+
     def test_whole_row_sort_keeps_identity(self):
         def edit(book):
             sheet = book['Samples']

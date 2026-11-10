@@ -9,7 +9,7 @@ An independent Odoo 19 add-on for exporting sample requests to Excel and preview
 ## Workflow
 
 1. Open a Sample Request and click **Export Sample Excel**. Choose **All Sample Lines** or **Selected Factory** within that request.
-2. Send the workbook to the factory. Edit only the blue columns: **Color & Finish**, **Other Sample Requirements**, **Sample Ready Date**, and **Factory Feedback**.
+2. Send the workbook to the factory. Edit only these four fields: **Color & Finish**, **Other Sample Requirements**, **Sample Ready Date**, and **Factory Feedback**.
 3. The **original exporter** opens the same request and clicks **Import Sample Updates** to upload the returned workbook.
 4. Click **Preview Changes**. Only changed fields appear. Ordinary updates default to Excel; clears default to ignore. Resolve genuine conflicts by choosing Excel or the current Odoo value.
 5. Click **Confirm Update**. Successful field changes are recorded in the request's existing chatter. The next export includes the saved values.
@@ -19,6 +19,8 @@ Sample Ready Date accepts a real Excel date or `YYYY-MM-DD` text. Put TBC, provi
 ## Workbook contents
 
 One sample line per table row, with a product thumbnail:
+
+The layout follows the supplied operational template: pale-cyan headers, bold Calibri text, black thin borders, white data cells, and larger product photos. There are no blue editable-cell fills or banded data rows. Existing manual green marks are not inferred or copied onto unrelated sample lines.
 
 | Column | Import behavior |
 |---|---|

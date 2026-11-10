@@ -47,7 +47,7 @@ def _thumbnail(raw):
         with Image.open(io.BytesIO(raw)) as img:
             if img.width * img.height > 16_000_000:
                 raise ValueError('An image has too many pixels.')
-            img.thumbnail((110, 100))
+            img.thumbnail((150, 140))
             out = io.BytesIO()
             img.convert('RGB').save(out, format='PNG')
             return out.getvalue()
@@ -66,29 +66,47 @@ def build_workbook(request_name, batch_token, rows):
     meta.very_hidden()
     meta.write_string(0, 0, SCHEMA)
     meta.write_string(1, 0, batch_token)
-    title = book.add_format({'bold': True, 'font_size': 18, 'font_color': '#17324D'})
-    plain = book.add_format({'text_wrap': True, 'valign': 'top', 'font_size': 11})
-    editable = book.add_format({'text_wrap': True, 'valign': 'top', 'font_size': 11,
-                               'bg_color': '#EFF6FF'})
-    date_format = book.add_format({'num_format': 'yyyy-mm-dd', 'valign': 'top',
-                                  'bg_color': '#EFF6FF', 'font_size': 11})
+    # Adapted from the supplied operational template: pale-cyan headers,
+    # bold Calibri, black thin borders, white data cells and larger photos.
+    title = book.add_format({'font_name': 'Calibri', 'bold': True, 'font_size': 16,
+                             'font_color': '#000000'})
+    body = {'font_name': 'Calibri', 'bold': True, 'font_size': 11,
+            'font_color': '#000000', 'text_wrap': True, 'valign': 'vcenter',
+            'align': 'center', 'border': 1, 'border_color': '#000000', 'bg_color': '#FFFFFF'}
+    plain = book.add_format(body)
+    editable = book.add_format({**body, 'align': 'left'})
+    date_format = book.add_format({**body, 'num_format': 'yyyy-mm-dd'})
+    header = book.add_format({'font_name': 'Calibri', 'bold': True, 'font_size': 12,
+                              'font_color': '#000000', 'bg_color': '#CCFFFF',
+                              'border': 1, 'border_color': '#000000', 'text_wrap': True,
+                              'align': 'center', 'valign': 'vcenter'})
+    note = book.add_format({'font_name': 'Calibri', 'font_size': 10, 'font_color': '#333333'})
+    sheet.hide_gridlines(2)
+    sheet.set_row(0, 26)
+    sheet.set_row(1, 18)
+    sheet.set_row(2, 18)
     sheet.write_string(0, 0, 'Sample Request', title)
-    sheet.write_string(1, 0, str(request_name), plain)
-    sheet.write_string(2, 0, 'Edit blue columns. Leave a date blank until confirmed. Sort the full table.', plain)
-    widths = [24, 21, 22, 18, 12, 28, 45, 19, 45, 25, 20, 40]
+    sheet.write_string(1, 0, str(request_name), note)
+    sheet.write_string(2, 0, 'Update Color & Finish, Requirements, Ready Date and Factory Feedback. Sort the full table.', note)
+    widths = [26, 21, 23, 24, 12, 29, 42, 20, 42, 24, 21, 40]
     for col, width in enumerate(widths):
         sheet.set_column(col, col, width, plain, {'hidden': col == 11})
-    sheet.set_row(3, 34)
+    sheet.set_row(3, 48)
     for index, row in enumerate(rows, 4):
-        sheet.set_row(index, 90)
+        sheet.set_row(index, 130)
         for col, (key, _) in enumerate(COLUMNS):
             value = row.get(key)
             if key == 'image':
+                sheet.write_blank(index, col, None, plain)
                 if value:
                     thumb = _thumbnail(value)
+                    with Image.open(io.BytesIO(thumb)) as picture:
+                        width, height = picture.size
                     sheet.insert_image(index, col, 'product.png', {
                         'image_data': io.BytesIO(thumb), 'object_position': 1,
-                        'x_offset': 5, 'y_offset': 5, 'description': row.get('model') or 'Product',
+                        'x_offset': max(5, (173 - width) // 2),
+                        'y_offset': max(5, (173 - height) // 2),
+                        'description': row.get('model') or 'Product',
                     })
             elif key == 'quantity' and isinstance(value, (int, float)) and not isinstance(value, bool):
                 sheet.write_number(index, col, value, plain)
@@ -100,10 +118,14 @@ def build_workbook(request_name, batch_token, rows):
                     sheet.write_blank(index, col, None, date_format)
             else:
                 fmt = editable if key in ('sample_color', 'remarks', 'factory_comment') else plain
-                sheet.write_string(index, col, _text(value), fmt)
+                text = _text(value)
+                if text:
+                    sheet.write_string(index, col, text, fmt)
+                else:
+                    sheet.write_blank(index, col, None, fmt)
     sheet.add_table(3, 0, 3 + len(rows), 11, {
-        'name': 'SampleLines', 'style': 'Table Style Light 9',
-        'columns': [{'header': label} for _, label in COLUMNS],
+        'name': 'SampleLines', 'style': None, 'banded_rows': False,
+        'columns': [{'header': label, 'header_format': header} for _, label in COLUMNS],
     })
     sheet.data_validation(4, 7, 3 + len(rows), 7, {
         'validate': 'date', 'criteria': 'between', 'minimum': date(1900, 1, 1),
