@@ -1,5 +1,6 @@
 import base64
 import secrets
+from copy import deepcopy
 
 from markupsafe import Markup
 
@@ -39,7 +40,13 @@ class SampleExcelService(models.AbstractModel):
             return result
         Task.check_access('read')
         domain = ['|'] * (len(link_fields) - 1) + [(f, 'in', lines.ids) for f in link_fields]
-        for task in Task.with_context(active_test=False).search(domain):
+        visible = Task.with_context(active_test=False).search(domain)
+        # Only an association count is elevated, never task contents or writes.
+        # Record rules must not make a hidden exact link look like no link.
+        total = Task.sudo().with_context(active_test=False).search_count(domain)
+        if len(visible) != total:
+            raise AccessError(self.env._('Some linked tasks are outside your access. Ask the sample owner or IT to review the task permissions.'))
+        for task in visible:
             targets = set()
             for name in link_fields:
                 value = task[name]
@@ -146,9 +153,42 @@ class SampleExcelService(models.AbstractModel):
         return facts
 
     @api.model
+    def _protected_scope(self, request):
+        lines = request.line_ids
+        lines.check_access('read')
+        scope = {'request': {'state': request.state, 'company_id': request.company_id.id,
+                             'line_ids': sorted(lines.ids)}, 'lines': {}, 'tasks': {}}
+        for line in lines:
+            scope['lines'][str(line.id)] = {
+                'state': line.state, 'supplier_id': line.supplier_id.id,
+                'product_tmpl_id': line.product_tmpl_id.id, 'request_id': line.request_id.id,
+                'quantity': line.quantity, 'fields': {
+                    name: fields.Date.to_string(line[name]) or '' if name == 'factory_ready_date'
+                    else line[name] or '' for name in EDITABLE},
+            }
+        for line_id, task in self._tasks(lines).items():
+            if task:
+                scope['tasks'][str(task.id)] = {
+                    'line_id': line_id, 'state': task.state, 'stage_id': task.stage_id.id,
+                    'company_id': task.company_id.id, 'project_id': task.project_id.id,
+                    'user_ids': sorted(task.user_ids.ids), 'dates': {
+                        name: fields.Date.to_string(task[name]) or ''
+                        for name in ('sample_ready_date', 'x_sample_ready_date') if name in task._fields},
+                }
+        return scope
+
+    @api.model
     def _apply(self, request, bases, updates, task_facts):
         by_key = {r['key']: r for r in bases}
         logs = []
+        expected = deepcopy(self._protected_scope(request))
+        for key, values in updates.items():
+            line_id = str(by_key[key]['line_id'])
+            expected['lines'][line_id]['fields'].update(values)
+            fact = task_facts.get(line_id)
+            if 'factory_ready_date' in values and fact:
+                expected['tasks'][str(fact['id'])]['dates'].update({
+                    name: values['factory_ready_date'] for name in fact['dates']})
         context = {
             'sample_request_project_link_syncing': True,
             'skip_sample_line_lifecycle': True, 'skip_sample_project_stage_sync': True,
@@ -181,3 +221,5 @@ class SampleExcelService(models.AbstractModel):
             request.with_context(mail_notify_force_send=False).message_post(
                 body=Markup('<p>Sample Excel update</p><ul>{}</ul>').format(Markup('').join(logs)),
                 subtype_xmlid='mail.mt_note', message_type='comment')
+        if self._protected_scope(request) != expected:
+            raise UserError(self.env._('An existing automation changed other protected sample/task data. The import was rolled back; ask IT to review the integration.'))

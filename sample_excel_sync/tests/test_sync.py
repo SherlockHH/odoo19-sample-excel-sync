@@ -1,6 +1,7 @@
 import base64
 import io
 from datetime import timedelta
+from unittest.mock import patch
 
 from openpyxl import load_workbook
 
@@ -162,8 +163,10 @@ class TestSampleExcelSync(TransactionCase):
         if 'x_sample_line_id' not in Task._fields:
             self.skipTest('Legacy task fields are unavailable in this installation.')
         task = Task.create({'name': 'Synthetic linked task', 'x_sample_line_id': self.line.id,
+                            'user_ids': [(6, 0, [self.editor.id])],
                             'x_sample_ready_date': '2026-11-14'})
-        unlinked = Task.create({'name': 'Synthetic unlinked task', 'x_sample_ready_date': '2026-11-10'})
+        unlinked = Task.create({'name': 'Synthetic unlinked task', 'x_sample_ready_date': '2026-11-10',
+                               'user_ids': [(6, 0, [self.editor.id])]})
         state = self.line.state
         self._preview(self._edit(self._export(self.factory), H5='2026-11-18')).action_confirm()
         self.assertEqual(str(task.x_sample_ready_date), '2026-11-18')
@@ -175,7 +178,8 @@ class TestSampleExcelSync(TransactionCase):
         if 'x_sample_line_id' not in Task._fields:
             self.skipTest('Legacy task fields are unavailable.')
         for suffix in ('A', 'B'):
-            Task.create({'name': 'Synthetic task ' + suffix, 'x_sample_line_id': self.line.id})
+            Task.create({'name': 'Synthetic task ' + suffix, 'x_sample_line_id': self.line.id,
+                         'user_ids': [(6, 0, [self.editor.id])]})
         with self.assertRaises(UserError):
             self._preview(self._edit(self._export(self.factory), H5='2026-11-18'))
 
@@ -186,3 +190,45 @@ class TestSampleExcelSync(TransactionCase):
                                    'model_id': model.id, 'domain_force': "[('id','=',0)]"})
         with self.assertRaises(AccessError):
             wizard.action_confirm()
+
+    def test_hidden_task_is_not_treated_as_absent(self):
+        Task = self.env['project.task']
+        if 'x_sample_line_id' not in Task._fields:
+            self.skipTest('Legacy task fields are unavailable.')
+        raw = self._export(self.factory)
+        Task.create({'name': 'Synthetic hidden task', 'x_sample_line_id': self.line.id})
+        with self.assertRaises((UserError, AccessError)):
+            self._preview(self._edit(raw, H5='2026-11-18'))
+
+    def test_indirect_other_line_write_is_rolled_back(self):
+        wizard = self._preview(self._edit(self._export(self.factory), I5='Ready'))
+        model_class = type(self.line)
+        original = model_class.write
+        other_id = self.line_b.id
+
+        def side_effect(records, values):
+            result = original(records, values)
+            if self.line.id in records.ids and 'factory_comment' in values:
+                original(records.browse(other_id), {'sample_color': 'Unexpected automation'})
+            return result
+
+        with patch.object(model_class, 'write', side_effect), self.assertRaises(UserError):
+            wizard.action_confirm()
+        self.assertFalse(self.line.factory_comment)
+        self.assertFalse(self.line_b.sample_color)
+
+    def test_unrelated_request_status_change_is_rolled_back(self):
+        wizard = self._preview(self._edit(self._export(self.factory), I5='Ready'))
+        model_class = type(self.line)
+        original = model_class.write
+
+        def side_effect(records, values):
+            result = original(records, values)
+            if 'factory_comment' in values:
+                records.request_id.write({'state': 'cancelled'})
+            return result
+
+        with patch.object(model_class, 'write', side_effect), self.assertRaises(UserError):
+            wizard.action_confirm()
+        self.assertEqual(self.request.state, 'draft')
+        self.assertFalse(self.line.factory_comment)
