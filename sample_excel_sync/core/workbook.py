@@ -99,7 +99,7 @@ def build_workbook(request_name, batch_token, rows):
                                 for part in str(row.get(key) or '').split('\n'))
                             for col, (key, _) in enumerate(COLUMNS)
                             if key in ('product_description', 'remarks', 'factory_comment'))
-        row_height = min(409, max(100, wrapped_lines * 12 + 12))
+        row_height = min(409, max(100, wrapped_lines * 13 + 12))
         sheet.set_row(index, row_height)
         for col, (key, _) in enumerate(COLUMNS):
             value = row.get(key)
