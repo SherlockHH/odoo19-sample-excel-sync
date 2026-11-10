@@ -90,7 +90,7 @@ def build_workbook(request_name, batch_token, rows):
     sheet.write_string(2, 0, 'Update Color & Finish, Requirements, Ready Date and Factory Feedback. Sort the full table.', note)
     widths = [26, 21, 23, 24, 12, 29, 42, 20, 42, 24, 21, 40]
     for col, width in enumerate(widths):
-        sheet.set_column(col, col, width, plain, {'hidden': col == 11})
+        sheet.set_column(col, col, width, None, {'hidden': col == 11})
     sheet.set_row(3, 48)
     for index, row in enumerate(rows, 4):
         sheet.set_row(index, 130)
