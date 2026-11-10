@@ -6,7 +6,7 @@ from odoo import fields, models
 from odoo.exceptions import AccessError, LockError, UserError
 
 from ..core.comparison import compare_rows, resolve_changes
-from ..core.constants import LABELS, MAX_FILE
+from ..core.constants import LABELS, LEGACY_SCHEMA, MAX_FILE
 from ..core.workbook import parse_workbook
 
 
@@ -42,17 +42,19 @@ class SampleExcelImport(models.TransientModel):
         self._check_owner()
         raw = self._file_bytes()
         try:
-            token, submitted = parse_workbook(raw)
+            token, submitted, schema = parse_workbook(raw, include_schema=True)
             snapshots = self.env['sample.excel.snapshot']
             export = snapshots._lookup(token, 'export', self.request_id)
+            if export.payload.get('schema', LEGACY_SCHEMA) != schema:
+                raise UserError(self.env._('The workbook layout does not match its original export batch.'))
             all_bases = export.payload['rows']
             # Validate identities/duplicates before selecting the submitted subset.
-            compare_rows(all_bases, all_bases, submitted)
+            compare_rows(all_bases, all_bases, submitted, schema=schema)
             keys = {r['key'] for r in submitted}
             bases = [r for r in all_bases if r['key'] in keys]
             service = self.env['sample.excel.service']
             current = service._current_rows(self.request_id, bases)
-            changes = compare_rows(bases, current, submitted)
+            changes = compare_rows(bases, current, submitted, schema=schema)
         except ValueError as exc:
             raise UserError(str(exc)) from exc
         date_keys = {c['key'] for c in changes if c['field'] == 'factory_ready_date'}
@@ -61,7 +63,7 @@ class SampleExcelImport(models.TransientModel):
         tasks = service._task_facts(date_lines)
         trusted = snapshots._store(self.request_id, 'preview', {
             'wizard_id': self.id, 'file_hash': hashlib.sha256(raw).hexdigest(),
-            'export_token': token, 'bases': bases, 'current': current,
+            'export_token': token, 'schema': schema, 'bases': bases, 'current': current,
             'changes': changes, 'tasks': tasks, 'request_state': self.request_id.state,
         })
         by_key = {r['key']: r for r in bases}

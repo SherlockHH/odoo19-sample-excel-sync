@@ -9,7 +9,7 @@ An independent Odoo 19 add-on for exporting sample requests to Excel and preview
 ## Workflow
 
 1. Open a Sample Request and click **Export Sample Excel**. Choose **All Sample Lines** or **Selected Factory** within that request.
-2. Send the workbook to the factory. Edit only these four fields: **Color & Finish**, **Other Sample Requirements**, **Sample Ready Date**, and **Factory Feedback**.
+2. Send the workbook to the factory. Edit only these four fields: **Color**, **Remarks**, **Sample Ready Date**, and **Factory Feedback**.
 3. The **original exporter** opens the same request and clicks **Import Sample Updates** to upload the returned workbook.
 4. Click **Preview Changes**. Only changed fields appear. Ordinary updates default to Excel; clears default to ignore. Resolve genuine conflicts by choosing Excel or the current Odoo value.
 5. Click **Confirm Update**. Successful field changes are recorded in the request's existing chatter. The next export includes the saved values.
@@ -20,25 +20,24 @@ Sample Ready Date accepts a real Excel date or `YYYY-MM-DD` text. Put TBC, provi
 
 One sample line per table row, with a product thumbnail:
 
-The layout follows the supplied operational template: pale-cyan headers, bold Calibri text, black thin borders, white data cells, and larger product photos. There are no blue editable-cell fills or banded data rows. Existing manual green marks are not inferred or copied onto unrelated sample lines.
+The current layout uses subtle blue-grey headers, thin light-grey borders, and pale-yellow cells only in the four editable columns. Product photos are centered and scaled proportionally. Rows start at approximately 100 pt; exceptionally long wrapped descriptions expand to avoid truncation. Malex Model and Photo stay frozen with the header, and the entire table supports filtering and sorting.
 
 | Column | Import behavior |
 |---|---|
-| Factory | Reference only |
 | Malex Model | Reference only |
-| Factory Model | Reference only |
 | Photo | Reference only |
+| Product Description | Read-only sample-line description, then linked product description |
+| Factory Model | Reference only |
+| Factory | Reference only |
 | Sample Qty | Reference only |
-| Color & Finish | Updates `sample_color` |
-| Other Sample Requirements | Updates `remarks` |
+| Color | Updates `sample_color` |
+| Remarks | Updates `remarks` |
 | Sample Ready Date | Updates `factory_ready_date` |
 | Factory Feedback | Updates `factory_comment` |
-| Plug / Logo | Reference only |
-| Line Status | Reference only |
 
-No customer information, specifications, or certifications are exported. The heading contains only the request reference. Existing plug/logo values stay separate from editable remarks to prevent duplicated text on repeated round trips.
+No customer information or additional packaging/certification fields are exported. Product Description prefers existing `product_description` on the sample line, then the linked product's `mlx_description_text`, `description`, or `description_sale`; existing HTML is converted to plain text. Remarks preserves the existing sample remarks, including special instructions, logo, accessories, and modification details already recorded there. Color/finish stays in `sample_color`. Values are never automatically moved between Color and Remarks.
 
-Series-level requirements must already be assigned to the relevant Odoo sample lines. The add-on does not infer them from old spreadsheet positions. Existing remark images (`x_remark_image`) are not exported in V1; record important requirements as text before use. A product thumbnail does not replace sample instructions.
+Series-level requirements must already be assigned to the relevant Odoo sample lines. The add-on does not infer them from old spreadsheet positions. Existing remark images (`x_remark_image`) are not exported in V1; record important requirements as text before use.
 
 ## Sorting and limits
 
@@ -80,7 +79,7 @@ The request model must provide `company_id`, `state`, `name`, and `line_ids`. Li
 
 The base request form is inherited by its verified unique name, `mlx.sample.request.form`. If that name has changed or several primary forms share it, IT must adjust the inheritance target in staging.
 
-Cancelled sample lines are exported and labelled but cannot be updated. Cancelled or resolved requests must be reopened through the existing business workflow before import.
+Cancelled sample lines may be exported but cannot be updated; V2 does not add a visible status column. Cancelled or resolved requests must be reopened through the existing business workflow before import.
 
 ### Existing task synchronization
 
@@ -108,6 +107,14 @@ After writes and chatter logging, the add-on checks the request's line identitie
 **Concurrency boundary:** legacy `x_sample_line_id` is an integer link. Other modules may create or rebind tasks in separate transactions without locking sample rows. This add-on does not add global hooks to every task mutation and does not claim fully serialized association changes. IT must test this scenario and avoid simultaneous task relinking during imports.
 
 A failed confirmation rolls back its transaction. Reverting code does **not** undo previously imported business data; use the change notes for manual correction or IT's tested database/filestore recovery procedure.
+
+## Workbook compatibility and offline exports
+
+New workbooks use layout schema `/2`: exactly ten visible columns plus the hidden row identifier in column K. Original `/1` workbooks remain importable against their original trusted batches. The importer checks that a workbook's schema matches its server-side batch; changing headers or downgrading its metadata is rejected.
+
+When the module is not installed, a workbook cannot be imported into that Odoo instance yet. A formal offline export can retain an immutable baseline separately with the trusted exporter. After IT installs this add-on, an administrator may deliberately register that batch using the **original unedited workbook**, retained manifest, and a manifest digest received from the trusted exporter. Registration creates only export metadata; subsequent factory edits use the normal preview/import workflow. It never registers or imports automatically from a factory-returned file.
+
+See [IT offline batch registration](docs/offline-registration.md). Registration was not performed against production during development. The production-name prompt is advisory, not a comprehensive production-environment detector.
 
 ## Development and checks
 

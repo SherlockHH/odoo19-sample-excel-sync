@@ -1,5 +1,6 @@
 import io
 import re
+import textwrap
 from datetime import date, datetime
 from zipfile import BadZipFile, ZipFile
 
@@ -8,7 +9,8 @@ import xlsxwriter
 from defusedxml.ElementTree import fromstring
 from PIL import Image, UnidentifiedImageError
 
-from .constants import COLUMNS, MAX_EXPANDED, MAX_FILE, MAX_ROWS, MAX_TEXT, SCHEMA
+from .constants import (COLUMNS, EDITABLE, LEGACY_COLUMNS, LEGACY_SCHEMA,
+                        MAX_EXPANDED, MAX_FILE, MAX_ROWS, MAX_TEXT, SCHEMA)
 
 
 def _text(value):
@@ -47,7 +49,7 @@ def _thumbnail(raw):
         with Image.open(io.BytesIO(raw)) as img:
             if img.width * img.height > 16_000_000:
                 raise ValueError('An image has too many pixels.')
-            img.thumbnail((150, 140))
+            img.thumbnail((110, 110))
             out = io.BytesIO()
             img.convert('RGB').save(out, format='PNG')
             return out.getvalue()
@@ -66,19 +68,19 @@ def build_workbook(request_name, batch_token, rows):
     meta.very_hidden()
     meta.write_string(0, 0, SCHEMA)
     meta.write_string(1, 0, batch_token)
-    # Adapted from the supplied operational template: pale-cyan headers,
-    # bold Calibri, black thin borders, white data cells and larger photos.
+    # Version 2: ten business columns, yellow only on editable fields.
     title = book.add_format({'font_name': 'Calibri', 'bold': True, 'font_size': 16,
                              'font_color': '#000000'})
-    body = {'font_name': 'Calibri', 'bold': True, 'font_size': 11,
+    body = {'font_name': 'Calibri', 'font_size': 11,
             'font_color': '#000000', 'text_wrap': True, 'valign': 'vcenter',
-            'align': 'center', 'border': 1, 'border_color': '#000000', 'bg_color': '#FFFFFF'}
+            'align': 'center', 'border': 1, 'border_color': '#D5DBE1', 'bg_color': '#FFFFFF'}
     plain = book.add_format(body)
-    editable = book.add_format({**body, 'align': 'left'})
-    date_format = book.add_format({**body, 'num_format': 'yyyy-mm-dd'})
+    description_format = book.add_format({**body, 'align': 'left'})
+    editable = book.add_format({**body, 'align': 'left', 'bg_color': '#FFF2CC'})
+    date_format = book.add_format({**body, 'num_format': 'yyyy-mm-dd', 'bg_color': '#FFF2CC'})
     header = book.add_format({'font_name': 'Calibri', 'bold': True, 'font_size': 12,
-                              'font_color': '#000000', 'bg_color': '#CCFFFF',
-                              'border': 1, 'border_color': '#000000', 'text_wrap': True,
+                              'font_color': '#243746', 'bg_color': '#E5EBF1',
+                              'border': 1, 'border_color': '#D5DBE1', 'text_wrap': True,
                               'align': 'center', 'valign': 'vcenter'})
     note = book.add_format({'font_name': 'Calibri', 'font_size': 10, 'font_color': '#333333'})
     sheet.hide_gridlines(2)
@@ -87,13 +89,18 @@ def build_workbook(request_name, batch_token, rows):
     sheet.set_row(2, 18)
     sheet.write_string(0, 0, 'Sample Request', title)
     sheet.write_string(1, 0, str(request_name), note)
-    sheet.write_string(2, 0, 'Update Color & Finish, Requirements, Ready Date and Factory Feedback. Sort the full table.', note)
-    widths = [26, 21, 23, 24, 12, 29, 42, 20, 42, 24, 21, 40]
+    sheet.write_string(2, 0, 'Editable fields are pale yellow: Color, Remarks, Sample Ready Date and Factory Feedback.', note)
+    widths = [21, 20, 62, 22, 28, 12, 28, 42, 20, 42, 40]
     for col, width in enumerate(widths):
-        sheet.set_column(col, col, width, None, {'hidden': col == 11})
-    sheet.set_row(3, 48)
+        sheet.set_column(col, col, width, None, {'hidden': col == len(COLUMNS) - 1})
+    sheet.set_row(3, 36)
     for index, row in enumerate(rows, 4):
-        sheet.set_row(index, 130)
+        wrapped_lines = max(sum(max(1, len(textwrap.wrap(part, width=int(widths[col]) - 2)))
+                                for part in str(row.get(key) or '').split('\n'))
+                            for col, (key, _) in enumerate(COLUMNS)
+                            if key in ('product_description', 'remarks', 'factory_comment'))
+        row_height = min(409, max(100, wrapped_lines * 12 + 12))
+        sheet.set_row(index, row_height)
         for col, (key, _) in enumerate(COLUMNS):
             value = row.get(key)
             if key == 'image':
@@ -104,8 +111,8 @@ def build_workbook(request_name, batch_token, rows):
                         width, height = picture.size
                     sheet.insert_image(index, col, 'product.png', {
                         'image_data': io.BytesIO(thumb), 'object_position': 1,
-                        'x_offset': max(5, (173 - width) // 2),
-                        'y_offset': max(5, (173 - height) // 2),
+                        'x_offset': max(5, (int(widths[col] * 7 + 5) - width) // 2),
+                        'y_offset': max(5, (int(row_height * 4 / 3) - height) // 2),
                         'description': row.get('model') or 'Product',
                     })
             elif key == 'quantity' and isinstance(value, (int, float)) and not isinstance(value, bool):
@@ -117,17 +124,18 @@ def build_workbook(request_name, batch_token, rows):
                 else:
                     sheet.write_blank(index, col, None, date_format)
             else:
-                fmt = editable if key in ('sample_color', 'remarks', 'factory_comment') else plain
+                fmt = editable if key in EDITABLE else description_format if key == 'product_description' else plain
                 text = _text(value)
                 if text:
                     sheet.write_string(index, col, text, fmt)
                 else:
                     sheet.write_blank(index, col, None, fmt)
-    sheet.add_table(3, 0, 3 + len(rows), 11, {
+    sheet.add_table(3, 0, 3 + len(rows), len(COLUMNS) - 1, {
         'name': 'SampleLines', 'style': None, 'banded_rows': False,
         'columns': [{'header': label, 'header_format': header} for _, label in COLUMNS],
     })
-    sheet.data_validation(4, 7, 3 + len(rows), 7, {
+    date_col = next(col for col, (key, _) in enumerate(COLUMNS) if key == 'factory_ready_date')
+    sheet.data_validation(4, date_col, 3 + len(rows), date_col, {
         'validate': 'date', 'criteria': 'between', 'minimum': date(1900, 1, 1),
         'maximum': date(2200, 12, 31), 'ignore_blank': True,
         'error_title': 'Use a date', 'error_message': 'Enter a date. Put TBC in Factory Feedback.',
@@ -136,7 +144,7 @@ def build_workbook(request_name, batch_token, rows):
     sheet.set_landscape()
     sheet.fit_to_pages(1, 0)
     sheet.repeat_rows(3)
-    sheet.print_area(0, 0, 3 + len(rows), 10)
+    sheet.print_area(0, 0, 3 + len(rows), len(COLUMNS) - 2)
     book.close()
     raw = out.getvalue()
     if len(raw) > MAX_FILE:
@@ -174,7 +182,7 @@ def _check_archive(raw):
         raise ValueError('Invalid XLSX file.') from exc
 
 
-def parse_workbook(raw):
+def parse_workbook(raw, *, include_schema=False):
     _check_archive(raw)
     try:
         book = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=False,
@@ -183,23 +191,25 @@ def parse_workbook(raw):
             if set(book.sheetnames) != {'Samples', '_sync'}:
                 raise ValueError('Use a workbook exported by Sample Excel Sync.')
             meta = book['_sync']
-            if meta['A1'].value != SCHEMA:
+            schema = meta['A1'].value
+            if schema not in (SCHEMA, LEGACY_SCHEMA):
                 raise ValueError('Unsupported workbook version. Export a fresh file.')
+            columns = COLUMNS if schema == SCHEMA else LEGACY_COLUMNS
             token = _text(meta['A2'].value)
             if not token:
                 raise ValueError('Missing export identifier.')
             sheet = book['Samples']
-            if sheet.max_row > MAX_ROWS + 4 or sheet.max_column > len(COLUMNS):
+            if sheet.max_row > MAX_ROWS + 4 or sheet.max_column > len(columns):
                 raise ValueError('Workbook has too many rows or columns.')
-            headers = [sheet.cell(4, c).value for c in range(1, 13)]
-            if headers != [label for _, label in COLUMNS]:
+            headers = [sheet.cell(4, c).value for c in range(1, len(columns) + 1)]
+            if headers != [label for _, label in columns]:
                 raise ValueError('Column headers were changed. Export a fresh file.')
             rows = []
-            for cells in sheet.iter_rows(min_row=5, max_col=12):
+            for cells in sheet.iter_rows(min_row=5, max_col=len(columns)):
                 if not any(c.value is not None for c in cells):
                     continue
                 row = {}
-                for cell, (key, _) in zip(cells, COLUMNS):
+                for cell, (key, _) in zip(cells, columns):
                     if cell.data_type in ('f', 'e'):
                         raise ValueError('Formulas and error cells cannot be imported.')
                     if key == 'image':
@@ -214,7 +224,7 @@ def parse_workbook(raw):
                     else:
                         row[key] = _text(cell.value)
                 rows.append(row)
-            return token, rows
+            return (token, rows, schema) if include_schema else (token, rows)
         finally:
             book.close()
     except (ValueError, KeyError, TypeError) as exc:

@@ -5,6 +5,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 from ..core.workbook import build_workbook
+from ..core.constants import SCHEMA
 
 
 class SampleExcelExport(models.TransientModel):
@@ -33,7 +34,7 @@ class SampleExcelExport(models.TransientModel):
         service = self.env['sample.excel.service']
         rows = service._export_rows(self.request_id, supplier)
         bases = [{k: v for k, v in row.items() if k != 'image'} for row in rows]
-        snapshot = self.env['sample.excel.snapshot']._store(self.request_id, 'export', {'rows': bases})
+        snapshot = self.env['sample.excel.snapshot']._store(self.request_id, 'export', {'rows': bases, 'schema': SCHEMA})
         try:
             raw = build_workbook(self.request_id.name, snapshot.token, rows)
         except ValueError as exc:

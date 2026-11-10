@@ -8,6 +8,7 @@ from odoo import api, fields, models
 from odoo.exceptions import AccessError, UserError
 
 from ..core.constants import EDITABLE, LABELS, MAX_ROWS
+from ..core.description import choose_description
 from .automation_guard import narrow_import_guard
 
 
@@ -90,6 +91,10 @@ class SampleExcelService(models.AbstractModel):
             'factory_model': (line.x_factory_model_no if 'x_factory_model_no' in line._fields else '')
                              or (product.factory_model_no if 'factory_model_no' in product._fields else '') or '',
             'quantity': line.quantity,
+            'product_description': choose_description(
+                line.product_description if 'product_description' in line._fields else '',
+                {name: product[name] for name in ('mlx_description_text', 'description', 'description_sale')
+                 if name in product._fields}),
             'sample_color': line.sample_color or '', 'remarks': line.remarks or '',
             'factory_ready_date': fields.Date.to_string(line.factory_ready_date) or '',
             'factory_comment': line.factory_comment or '',
@@ -113,9 +118,7 @@ class SampleExcelService(models.AbstractModel):
             raise UserError(self.env._('Choose a scope with 1 to 2000 sample lines.'))
         order = 'sequence' if 'sequence' in lines._fields else 'id'
         lines = lines.sorted(key=lambda line: (line.supplier_id.display_name or '', line[order], line.id))
-        # Task data is only used for an existing Logo reference. Read rights apply.
-        tasks = self._tasks(lines)
-        return [self._row(line, secrets.token_urlsafe(24), image=True, task=tasks[line.id]) for line in lines]
+        return [self._row(line, secrets.token_urlsafe(24), image=True) for line in lines]
 
     @api.model
     def _current_rows(self, request, baselines):
@@ -133,7 +136,7 @@ class SampleExcelService(models.AbstractModel):
                 raise UserError(self.env._('A sample line changed product, factory or request. Export again.'))
             row = self._row(line, base['key'])
             # Reference remains immutable in Excel; do not query task text just for comparison.
-            row['reference'] = base['reference']
+            row['reference'] = base.get('reference', '')
             result.append(row)
         return result
 

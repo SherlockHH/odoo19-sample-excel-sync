@@ -9,3 +9,5 @@ htmlcov/
 .env
 *.xlsx
 *.log
+*.batch.json
+*.batch.sha256

@@ -27,6 +27,7 @@ class Line(models.Model):
     remarks = fields.Text()
     factory_ready_date = fields.Date()
     factory_comment = fields.Text()
+    product_description = fields.Text(readonly=True)
     state = fields.Selection([('draft', 'Draft'), ('cancelled', 'Cancelled')], default='draft')
 
 

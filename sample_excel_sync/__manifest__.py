@@ -1,7 +1,7 @@
 {
     'name': 'Sample Excel Export & Update',
     'summary': 'Export sample lines and preview four-field Excel updates',
-    'version': '19.0.1.0.1',
+    'version': '19.0.1.1.0',
     'category': 'Productivity',
     'license': 'LGPL-3',
     'depends': ['sample_management_mlx', 'project', 'mail'],

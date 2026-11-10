@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -26,7 +26,7 @@ def sample(key='opaque-row-one', **changes):
     row = dict(key=key, factory='Demo Factory', model='DEMO-001',
                factory_model='FM-001', quantity=2, sample_color='Silver',
                remarks='Chrome handle', factory_ready_date='2026-11-14',
-               factory_comment='', reference='Plug: VDE', state='In Progress')
+               factory_comment='', product_description='500 W blender with glass jar')
     row.update(changes)
     return row
 
@@ -111,14 +111,14 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(rows, self.rows)
 
     def test_date_edit_roundtrip(self):
-        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['H5'], 'value',
+        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['I5'], 'value',
                                                     date(2026, 11, 18)))
         self.assertEqual(parse_workbook(raw)[1][0]['factory_ready_date'], '2026-11-18')
 
     def test_empty_fields_are_true_blank_cells(self):
         raw = build_workbook('SMP-DEMO', 'export', [sample(sample_color='', factory_model='')])
         book = load_workbook(io.BytesIO(raw))
-        for address in ('C5', 'F5', 'I5'):
+        for address in ('D5', 'G5', 'J5'):
             with self.subTest(address=address):
                 self.assertIsNone(book['Samples'][address].value)
 
@@ -139,28 +139,73 @@ class WorkbookTests(unittest.TestCase):
                      '@SUM(1,1)', '-1+2']:
             raw = build_workbook('SMP-DEMO', 'export', [sample(factory_comment=text)])
             w = load_workbook(io.BytesIO(raw))
-            self.assertEqual(w['Samples']['I5'].data_type, 's')
+            self.assertEqual(w['Samples']['J5'].data_type, 's')
             self.assertEqual(parse_workbook(raw)[1][0]['factory_comment'], text)
 
     def test_incoming_formula_is_rejected(self):
-        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['I5'], 'value', '=1+1'))
+        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['J5'], 'value', '=1+1'))
         with self.assertRaises(ValueError):
             parse_workbook(raw)
 
     def test_invalid_dates_are_not_silently_interpreted(self):
         for value in ['TBC', '18/11/2026', 46335, '2026-02-30', 0, False]:
             def edit(book):
-                book['Samples']['H5'] = value
-                book['Samples']['H5'].number_format = 'General'
+                book['Samples']['I5'] = value
+                book['Samples']['I5'].number_format = 'General'
             raw = edited_file(self.raw, edit)
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_workbook(raw)
 
     def test_table_includes_hidden_row_key(self):
         w = load_workbook(io.BytesIO(self.raw))
-        self.assertEqual(w['Samples'].tables['SampleLines'].ref, 'A4:L6')
-        self.assertTrue(w['Samples'].column_dimensions['L'].hidden)
+        self.assertEqual(w['Samples'].tables['SampleLines'].ref, 'A4:K6')
+        self.assertTrue(w['Samples'].column_dimensions['K'].hidden)
         self.assertEqual(w['_sync'].sheet_state, 'veryHidden')
+
+    def test_exact_ten_visible_columns(self):
+        sheet = load_workbook(io.BytesIO(self.raw))['Samples']
+        self.assertEqual([sheet.cell(4, c).value for c in range(1, 11)], [
+            'Malex Model', 'Photo', 'Product Description', 'Factory Model', 'Factory',
+            'Sample Qty', 'Color', 'Remarks', 'Sample Ready Date', 'Factory Feedback'])
+        self.assertEqual(sheet.freeze_panes, 'C5')
+
+    def test_changed_description_is_not_importable(self):
+        edited = edited_file(self.raw, lambda w: setattr(w['Samples']['C5'], 'value', 'Changed specification'))
+        _, rows = parse_workbook(edited)
+        with self.assertRaises(ValueError):
+            compare_rows(self.rows, self.rows, rows)
+
+    def test_schema_is_available_to_importer(self):
+        token, rows, schema = parse_workbook(self.raw, include_schema=True)
+        self.assertEqual(schema, 'sample-excel-sync/2')
+        self.assertEqual(token, 'opaque-export')
+        self.assertEqual(rows, self.rows)
+
+    def test_legacy_layout_remains_readable(self):
+        book = Workbook()
+        sheet = book.active
+        sheet.title = 'Samples'
+        headers = ['Factory', 'Malex Model', 'Factory Model', 'Photo', 'Sample Qty',
+                   'Color & Finish', 'Other Sample Requirements', 'Sample Ready Date',
+                   'Factory Feedback', 'Plug / Logo (Reference)', 'Line Status', 'Record Key']
+        for col, header in enumerate(headers, 1):
+            sheet.cell(4, col, header)
+        values = ['Demo Factory', 'DEMO-001', 'FM-001', None, 2, 'Silver', 'Chrome handle',
+                  '2026-11-14', None, 'Plug: VDE', 'In Progress', 'legacy-key']
+        for col, value in enumerate(values, 1):
+            sheet.cell(5, col, value)
+        meta = book.create_sheet('_sync')
+        meta['A1'] = 'sample-excel-sync/1'
+        meta['A2'] = 'legacy-export'
+        meta.sheet_state = 'veryHidden'
+        out = io.BytesIO()
+        book.save(out)
+        token, rows, schema = parse_workbook(out.getvalue(), include_schema=True)
+        self.assertEqual((token, schema), ('legacy-export', 'sample-excel-sync/1'))
+        edited = [dict(rows[0], factory_comment='Ready')]
+        changes = compare_rows(rows, rows, edited, schema=schema)
+        self.assertEqual([c['field'] for c in changes], ['factory_comment'])
+
 
     def test_picture_moves_with_cells_and_no_external_relationship(self):
         image = io.BytesIO()
@@ -203,6 +248,30 @@ class WorkbookTests(unittest.TestCase):
                        '<Relationships><Relationship TargetMode="External" Target="https://invalid.example"/></Relationships>')
         with self.assertRaises(ValueError):
             parse_workbook(out.getvalue())
+
+
+class DescriptionTests(unittest.TestCase):
+    def test_line_description_has_priority(self):
+        from sync_core.description import choose_description
+        self.assertEqual(choose_description('Sample-specific features',
+                         {'mlx_description_text': 'Master features'}), 'Sample-specific features')
+
+    def test_product_description_fallback_is_plain_text(self):
+        from sync_core.description import choose_description
+        self.assertEqual(choose_description('', {'description': '<p>500 W</p><p>Glass jar</p>'}),
+                         '500 W\nGlass jar')
+
+    def test_packaging_and_certification_fields_are_not_added(self):
+        from sync_core.description import choose_description
+        self.assertEqual(choose_description(False, {'mlx_description_text': 'Master features',
+                         'description_purchase': 'Internal packing', 'certifications': 'GS'}),
+                         'Master features')
+
+    def test_less_than_feature_text_is_preserved(self):
+        from sync_core.description import choose_description
+        self.assertEqual(choose_description('Brewing time: <10 MINS\nTemperature: >75℃', {}),
+                         'Brewing time: <10 MINS\nTemperature: >75℃')
+
 
 
 if __name__ == '__main__':

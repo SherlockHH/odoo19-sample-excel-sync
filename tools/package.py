@@ -19,7 +19,8 @@ def main():
         for path in sorted(MODULE.rglob('*')):
             if path.is_file() and path.suffix in ('.py', '.xml', '.csv', '.po', '.md') and '__pycache__' not in path.parts:
                 archive.write(path, path.relative_to(ROOT).as_posix())
-        for name in ('LICENSE', 'COPYING', 'README.md', 'README.zh-CN.md', 'docs/acceptance.md'):
+        for name in ('LICENSE', 'COPYING', 'README.md', 'README.zh-CN.md', 'docs/acceptance.md',
+                     'docs/offline-registration.md'):
             archive.write(ROOT / name, f'sample_excel_sync/{name}')
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
     output.with_suffix('.zip.sha256').write_text(f'{digest}  {output.name}\n', encoding='ascii')
