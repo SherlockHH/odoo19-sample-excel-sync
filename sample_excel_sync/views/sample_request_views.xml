@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sample_request_excel_buttons" model="ir.ui.view">
+        <field name="name">mlx.sample.request.form.excel.sync</field>
+        <field name="model">mlx.sample.request</field>
+        <!-- Resolve the deployed base form by its verified name; no database-specific numeric ID. -->
+        <field name="inherit_id" search="[('name', '=', 'mlx.sample.request.form'), ('model', '=', 'mlx.sample.request'), ('type', '=', 'form'), ('mode', '=', 'primary')]"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_export_sample_excel" string="Export Sample Excel" type="object" groups="base.group_user"/>
+                <button name="action_import_sample_excel" string="Import Sample Updates" type="object" groups="base.group_user"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

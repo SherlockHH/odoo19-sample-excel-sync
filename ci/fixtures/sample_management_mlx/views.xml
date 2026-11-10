@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_synthetic_request" model="ir.ui.view">
+        <field name="name">mlx.sample.request.form</field>
+        <field name="model">mlx.sample.request</field>
+        <field name="arch" type="xml">
+            <form><header/><sheet><group><field name="name"/><field name="company_id"/></group></sheet></form>
+        </field>
+    </record>
+</odoo>

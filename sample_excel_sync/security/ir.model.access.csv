@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_sample_excel_export,Sample Excel export,model_sample_excel_export,base.group_user,1,1,1,1
+access_sample_excel_import,Sample Excel import,model_sample_excel_import,base.group_user,1,1,1,1
+access_sample_excel_change,Sample Excel changes,model_sample_excel_change,base.group_user,1,1,1,1
+access_sample_excel_snapshot_admin,Sample Excel metadata read,model_sample_excel_snapshot,base.group_system,1,0,0,0

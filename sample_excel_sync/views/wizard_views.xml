@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_sample_excel_export" model="ir.ui.view">
+        <field name="name">sample.excel.export.form</field>
+        <field name="model">sample.excel.export</field>
+        <field name="arch" type="xml">
+            <form string="Export Sample Excel">
+                <group>
+                    <field name="request_id"/>
+                    <field name="scope" widget="radio"/>
+                    <field name="available_supplier_ids" invisible="1"/>
+                    <field name="supplier_id" domain="[('id', 'in', available_supplier_ids)]"
+                           invisible="scope != 'factory'" required="scope == 'factory'"
+                           options="{'no_create': True, 'no_open': True}"/>
+                </group>
+                <footer>
+                    <button name="action_export" string="Export Excel" type="object" class="btn-primary"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+    <record id="view_sample_excel_import" model="ir.ui.view">
+        <field name="name">sample.excel.import.form</field>
+        <field name="model">sample.excel.import</field>
+        <field name="arch" type="xml">
+            <form string="Import Sample Updates">
+                <group>
+                    <field name="request_id"/>
+                    <field name="file_name" invisible="1"/>
+                    <field name="file_data" filename="file_name" options="{'accepted_file_extensions': '.xlsx'}"/>
+                    <field name="state" invisible="1"/>
+                </group>
+                <div class="alert alert-info" invisible="state != 'preview' or not change_ids">
+                    Only changed fields are shown. Choose an action for conflicts; clears are ignored unless confirmed.
+                </div>
+                <div class="alert alert-info" invisible="state != 'preview' or change_ids">
+                    No changed fields were found. Odoo data will stay as it is.
+                </div>
+                <field name="change_ids" invisible="state != 'preview'" nolabel="1">
+                    <list editable="bottom" create="0" delete="0" decoration-warning="kind == 'conflict'">
+                        <field name="product_label"/>
+                        <field name="field_label"/>
+                        <field name="current_value"/>
+                        <field name="incoming_value"/>
+                        <field name="kind" widget="badge"/>
+                        <field name="choice"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="action_preview" string="Preview Changes" type="object" class="btn-primary" invisible="state == 'done'"/>
+                    <button name="action_confirm" string="Confirm Update" type="object" class="btn-primary" invisible="state != 'preview'"/>
+                    <button string="Close" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>
