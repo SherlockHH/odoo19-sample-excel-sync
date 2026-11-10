@@ -15,8 +15,9 @@ class TestSampleExcelSync(TransactionCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.editor = new_test_user(cls.env, login='sample_excel_editor', groups='base.group_user,project.group_project_user')
-        cls.other = new_test_user(cls.env, login='sample_excel_other', groups='base.group_user,project.group_project_user')
+        users_env = cls.env['res.users'].with_context(no_reset_password=True).env
+        cls.editor = new_test_user(users_env, login='sample_excel_editor', groups='base.group_user,project.group_project_user')
+        cls.other = new_test_user(users_env, login='sample_excel_other', groups='base.group_user,project.group_project_user')
         cls.factory = cls.env['res.partner'].create({'name': 'Synthetic Factory A'})
         cls.factory_b = cls.env['res.partner'].create({'name': 'Synthetic Factory B'})
         cls.product = cls.env['product.template'].create({'name': 'Synthetic Item'})
@@ -116,7 +117,7 @@ class TestSampleExcelSync(TransactionCase):
 
     def test_other_user_token_and_wizard_rejected(self):
         raw = self._export(self.factory)
-        with self.assertRaises((UserError, AccessError)):
+        with self.assertRaises(UserError):
             self._preview(raw, self.other)
         wizard = self._preview(self._edit(raw, I5='Ready'))
         with self.assertRaises(AccessError):
@@ -197,7 +198,7 @@ class TestSampleExcelSync(TransactionCase):
             self.skipTest('Legacy task fields are unavailable.')
         raw = self._export(self.factory)
         Task.create({'name': 'Synthetic hidden task', 'x_sample_line_id': self.line.id})
-        with self.assertRaises((UserError, AccessError)):
+        with self.assertRaises(AccessError):
             self._preview(self._edit(raw, H5='2026-11-18'))
 
     def test_indirect_other_line_write_is_rolled_back(self):
