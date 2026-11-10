@@ -10,7 +10,7 @@ import re
 from datetime import datetime, timedelta
 
 from .comparison import compare_rows
-from .constants import EDITABLE, MAX_EXPANDED, MAX_ROWS, SCHEMA
+from .constants import EDITABLE, MAX_EXPANDED, MAX_ROWS, SCHEMA, V2_SCHEMA
 from .workbook import parse_workbook
 
 
@@ -30,7 +30,7 @@ def validate_offline_batch(manifest_bytes, workbook_bytes, expected_sha256):
     for name in ('database', 'request_name', 'user_login'):
         if not isinstance(manifest.get(name), str) or not 1 <= len(manifest[name]) <= 256:
             raise ValueError('Missing offline database/request/owner identity.')
-    if manifest.get('schema') != SCHEMA or not re.fullmatch(r'[A-Za-z0-9_-]{32,100}', manifest.get('token', '')):
+    if manifest.get('schema') not in (SCHEMA, V2_SCHEMA) or not re.fullmatch(r'[A-Za-z0-9_-]{32,100}', manifest.get('token', '')):
         raise ValueError('Unsupported offline layout or export token.')
     issued = datetime.strptime(manifest['exported_at'], '%Y-%m-%d %H:%M:%S')
     expiry = datetime.strptime(manifest['expires_at'], '%Y-%m-%d %H:%M:%S')
@@ -40,7 +40,8 @@ def validate_offline_batch(manifest_bytes, workbook_bytes, expected_sha256):
         raise ValueError('Register only the original unedited export, not a factory-returned file.')
     token, submitted, schema = parse_workbook(workbook_bytes, include_schema=True)
     payload = manifest.get('payload')
-    if not isinstance(payload, dict) or payload.get('schema') != SCHEMA or schema != SCHEMA or token != manifest['token']:
+    if (not isinstance(payload, dict) or payload.get('schema') != schema
+            or manifest['schema'] != schema or token != manifest['token']):
         raise ValueError('Workbook and offline batch metadata do not match.')
     rows = payload.get('rows')
     if not isinstance(rows, list) or not 1 <= len(rows) <= MAX_ROWS or len(rows) != len(submitted):
@@ -59,6 +60,6 @@ def validate_offline_batch(manifest_bytes, workbook_bytes, expected_sha256):
                 raise ValueError('Invalid original product/factory identity.')
         if any(name not in row or not isinstance(row[name], str) for name in EDITABLE):
             raise ValueError('Missing original editable field values.')
-    if compare_rows(rows, rows, submitted, schema=SCHEMA):
+    if compare_rows(rows, rows, submitted, schema=schema):
         raise ValueError('Original workbook values differ from the trusted offline baseline.')
     return manifest

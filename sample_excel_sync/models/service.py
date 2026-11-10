@@ -105,6 +105,8 @@ class SampleExcelService(models.AbstractModel):
             value = (line.x_product_image if 'x_product_image' in line._fields else False) or product.image_256
             if value:
                 row['image'] = base64.b64decode(value)
+            if 'x_remark_image' in line._fields and line.x_remark_image:
+                row['remark_image'] = base64.b64decode(line.x_remark_image)
         return row
 
     @api.model

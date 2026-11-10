@@ -5,6 +5,7 @@ import unittest
 from datetime import date
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
+from xml.etree.ElementTree import fromstring
 
 from openpyxl import Workbook, load_workbook
 from PIL import Image
@@ -34,6 +35,27 @@ def sample(key='opaque-row-one', **changes):
 def edited_file(raw, edit):
     book = load_workbook(io.BytesIO(raw))
     edit(book)
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def v2_file(rows, token='opaque-export'):
+    book = Workbook()
+    sheet = book.active
+    sheet.title = 'Samples'
+    columns = [('model', 'Malex Model'), ('image', 'Photo'),
+               ('product_description', 'Product Description'), ('factory_model', 'Factory Model'),
+               ('factory', 'Factory'), ('quantity', 'Sample Qty'), ('sample_color', 'Color'),
+               ('remarks', 'Remarks'), ('factory_ready_date', 'Sample Ready Date'),
+               ('factory_comment', 'Factory Feedback'), ('key', 'Record Key')]
+    for col, (key, header) in enumerate(columns, 1):
+        sheet.cell(4, col, header)
+        for row, values in enumerate(rows, 5):
+            sheet.cell(row, col, values.get(key))
+    meta = book.create_sheet('_sync')
+    meta['A1'], meta['A2'] = 'sample-excel-sync/2', token
+    meta.sheet_state = 'veryHidden'
     out = io.BytesIO()
     book.save(out)
     return out.getvalue()
@@ -111,14 +133,14 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual(rows, self.rows)
 
     def test_date_edit_roundtrip(self):
-        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['I5'], 'value',
+        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['J5'], 'value',
                                                     date(2026, 11, 18)))
         self.assertEqual(parse_workbook(raw)[1][0]['factory_ready_date'], '2026-11-18')
 
     def test_empty_fields_are_true_blank_cells(self):
         raw = build_workbook('SMP-DEMO', 'export', [sample(sample_color='', factory_model='')])
         book = load_workbook(io.BytesIO(raw))
-        for address in ('D5', 'G5', 'J5'):
+        for address in ('C5', 'G5', 'K5'):
             with self.subTest(address=address):
                 self.assertIsNone(book['Samples'][address].value)
 
@@ -139,45 +161,81 @@ class WorkbookTests(unittest.TestCase):
                      '@SUM(1,1)', '-1+2']:
             raw = build_workbook('SMP-DEMO', 'export', [sample(factory_comment=text)])
             w = load_workbook(io.BytesIO(raw))
-            self.assertEqual(w['Samples']['J5'].data_type, 's')
+            self.assertEqual(w['Samples']['K5'].data_type, 's')
             self.assertEqual(parse_workbook(raw)[1][0]['factory_comment'], text)
 
     def test_incoming_formula_is_rejected(self):
-        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['J5'], 'value', '=1+1'))
+        raw = edited_file(self.raw, lambda w: setattr(w['Samples']['K5'], 'value', '=1+1'))
         with self.assertRaises(ValueError):
             parse_workbook(raw)
 
     def test_invalid_dates_are_not_silently_interpreted(self):
         for value in ['TBC', '18/11/2026', 46335, '2026-02-30', 0, False]:
             def edit(book):
-                book['Samples']['I5'] = value
-                book['Samples']['I5'].number_format = 'General'
+                book['Samples']['J5'] = value
+                book['Samples']['J5'].number_format = 'General'
             raw = edited_file(self.raw, edit)
             with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_workbook(raw)
 
     def test_table_includes_hidden_row_key(self):
         w = load_workbook(io.BytesIO(self.raw))
-        self.assertEqual(w['Samples'].tables['SampleLines'].ref, 'A4:K6')
-        self.assertTrue(w['Samples'].column_dimensions['K'].hidden)
+        self.assertEqual(w['Samples'].tables['SampleLines'].ref, 'A4:L6')
+        self.assertTrue(w['Samples'].column_dimensions['L'].hidden)
         self.assertEqual(w['_sync'].sheet_state, 'veryHidden')
 
-    def test_exact_ten_visible_columns(self):
+    def test_factory_first_layout_with_separate_remark_photo(self):
         sheet = load_workbook(io.BytesIO(self.raw))['Samples']
-        self.assertEqual([sheet.cell(4, c).value for c in range(1, 11)], [
-            'Malex Model', 'Photo', 'Product Description', 'Factory Model', 'Factory',
-            'Sample Qty', 'Color', 'Remarks', 'Sample Ready Date', 'Factory Feedback'])
-        self.assertEqual(sheet.freeze_panes, 'C5')
+        self.assertEqual([sheet.cell(4, c).value for c in range(1, 12)], [
+            'Factory', 'Malex Model No', 'Factory Model No', 'Photo', 'Product Description',
+            'Sample Qty', 'Color', 'Remarks', 'Remark Photo', 'Sample Ready Date', 'Factory Feedback'])
+        self.assertEqual(sheet.freeze_panes, 'E5')
+        self.assertEqual([sheet.cell(5, c).fill.fgColor.rgb for c in range(1, 12)],
+                         ['FFFFFFFF'] * 6 + ['FFFFF2CC'] * 2 + ['FFFFFFFF'] + ['FFFFF2CC'] * 2)
+
+    def test_product_and_remark_photos_are_separate_proportional_anchors(self):
+        photo = io.BytesIO()
+        Image.new('RGB', (400, 200), 'green').save(photo, 'PNG')
+        row = sample(image=photo.getvalue(), remark_image=photo.getvalue())
+        raw = build_workbook('SMP-DEMO', 'export', [row, sample(key='no-remark')])
+        sheet = load_workbook(io.BytesIO(raw))['Samples']
+        self.assertEqual(len(sheet._images), 2)
+        self.assertEqual([p.anchor._from.col for p in sheet._images], [3, 8])
+        self.assertEqual([p.anchor._from.row for p in sheet._images], [4, 4])
+        self.assertTrue(all(p.width == p.height * 2 for p in sheet._images))
+        self.assertEqual(parse_workbook(raw)[1], [sample(), sample(key='no-remark')])
+
+    def test_previous_ten_column_file_still_imports(self):
+        raw = v2_file(self.rows)
+        edited = edited_file(raw, lambda w: setattr(w['Samples']['J5'], 'value', 'V2 return'))
+        _, rows, schema = parse_workbook(edited, include_schema=True)
+        self.assertEqual(schema, 'sample-excel-sync/2')
+        updates = resolve_changes(compare_rows(self.rows, self.rows, rows, schema=schema), {})
+        self.assertEqual(updates, {'opaque-row-one': {'factory_comment': 'V2 return'}})
+
+    def test_remark_photo_display_size_is_independent_of_source_dpi(self):
+        for dpi in (72, 300):
+            photo = io.BytesIO()
+            Image.new('RGB', (400, 200), 'green').save(photo, 'PNG', dpi=(dpi, dpi))
+            original = photo.getvalue()
+            raw = build_workbook('SMP-DEMO', 'export', [sample(remark_image=original)])
+            with ZipFile(io.BytesIO(raw)) as archive:
+                root = fromstring(archive.read('xl/drawings/drawing1.xml'))
+                extent = root.find('.//{http://schemas.openxmlformats.org/drawingml/2006/main}ext')
+                with self.subTest(dpi=dpi):
+                    self.assertAlmostEqual(int(extent.attrib['cx']) / 9525, 240, delta=0.02)
+                    self.assertAlmostEqual(int(extent.attrib['cy']) / 9525, 120, delta=0.02)
+                    self.assertIn(original, [archive.read(n) for n in archive.namelist() if n.startswith('xl/media/')])
 
     def test_changed_description_is_not_importable(self):
-        edited = edited_file(self.raw, lambda w: setattr(w['Samples']['C5'], 'value', 'Changed specification'))
+        edited = edited_file(self.raw, lambda w: setattr(w['Samples']['E5'], 'value', 'Changed specification'))
         _, rows = parse_workbook(edited)
         with self.assertRaises(ValueError):
             compare_rows(self.rows, self.rows, rows)
 
     def test_schema_is_available_to_importer(self):
         token, rows, schema = parse_workbook(self.raw, include_schema=True)
-        self.assertEqual(schema, 'sample-excel-sync/2')
+        self.assertEqual(schema, 'sample-excel-sync/3')
         self.assertEqual(token, 'opaque-export')
         self.assertEqual(rows, self.rows)
 

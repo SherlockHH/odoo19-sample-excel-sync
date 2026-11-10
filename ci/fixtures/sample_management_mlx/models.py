@@ -25,6 +25,7 @@ class Line(models.Model):
     quantity = fields.Integer()
     sample_color = fields.Char()
     remarks = fields.Text()
+    x_remark_image = fields.Binary()
     factory_ready_date = fields.Date()
     factory_comment = fields.Text()
     product_description = fields.Text(readonly=True)

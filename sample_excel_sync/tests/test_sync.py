@@ -7,12 +7,13 @@ from datetime import timedelta
 from unittest.mock import patch
 
 from openpyxl import Workbook, load_workbook
+from PIL import Image
 
 from odoo import fields
 from odoo.exceptions import AccessError, UserError
 from odoo.tests import TransactionCase, new_test_user, tagged
 
-from ..core.constants import SCHEMA
+from ..core.constants import COLUMNS, SCHEMA, V2_COLUMNS, V2_SCHEMA
 from ..core.workbook import build_workbook
 
 
@@ -76,9 +77,9 @@ class TestSampleExcelSync(TransactionCase):
             sheet.cell(4, col, label)
         for row in range(5, original['Samples'].max_row + 1):
             source = original['Samples']
-            values = [source[f'E{row}'].value, source[f'A{row}'].value, source[f'D{row}'].value,
+            values = [source[f'A{row}'].value, source[f'B{row}'].value, source[f'C{row}'].value,
                       None, source[f'F{row}'].value, source[f'G{row}'].value, source[f'H{row}'].value,
-                      source[f'I{row}'].value, source[f'J{row}'].value, '', 'Draft', source[f'K{row}'].value]
+                      source[f'J{row}'].value, source[f'K{row}'].value, '', 'Draft', source[f'L{row}'].value]
             for col, value in enumerate(values, 1):
                 sheet.cell(row, col, value)
         meta = book.create_sheet('_sync')
@@ -94,9 +95,63 @@ class TestSampleExcelSync(TransactionCase):
         self.line.product_description = 'Sample line-specific features'
         raw = self._export(self.factory)
         sheet = load_workbook(io.BytesIO(raw))['Samples']
-        self.assertEqual(sheet['C5'].value, 'Sample line-specific features')
+        self.assertEqual(sheet['E5'].value, 'Sample line-specific features')
         with self.assertRaises(UserError):
-            self._preview(self._edit(raw, C5='Changed by factory'))
+            self._preview(self._edit(raw, E5='Changed by factory'))
+
+    def test_existing_remark_photo_export_and_four_field_roundtrip(self):
+        picture = io.BytesIO()
+        Image.new('RGB', (400, 200), 'green').save(picture, 'PNG')
+        original_image = base64.b64encode(picture.getvalue())
+        self.line.x_remark_image = original_image
+        raw = self._export(self.factory)
+        sheet = load_workbook(io.BytesIO(raw))['Samples']
+        self.assertEqual(sheet['A5'].value, self.factory.display_name)
+        self.assertEqual(sheet['I4'].value, 'Remark Photo')
+        self.assertEqual(len(sheet._images), 1)
+        self.assertEqual(sheet._images[0].anchor._from.col, 8)
+        snapshot = self.env['sample.excel.snapshot'].sudo().search([
+            ('kind', '=', 'export')], order='id desc', limit=1)
+        self.assertNotIn('remark_image', snapshot.payload['rows'][0])
+        wizard = self._preview(self._edit(raw, G5='Black', H5='Use revised handle',
+                                         J5='2026-11-18', K5='Factory response'))
+        self.assertEqual(len(wizard.change_ids), 4)
+        wizard.action_confirm()
+        self.assertEqual(self.line.sample_color, 'Black')
+        self.assertEqual(self.line.remarks, 'Use revised handle')
+        self.assertEqual(str(self.line.factory_ready_date), '2026-11-18')
+        self.assertEqual(self.line.factory_comment, 'Factory response')
+        self.assertEqual(self.line.x_remark_image, original_image)
+        self.assertFalse(self.line_b.factory_comment)
+
+    def _v2_file(self, raw):
+        original = load_workbook(io.BytesIO(raw))
+        book = Workbook()
+        sheet = book.active
+        sheet.title = 'Samples'
+        positions = {key: col for col, (key, _) in enumerate(COLUMNS, 1)}
+        for col, (key, label) in enumerate(V2_COLUMNS, 1):
+            sheet.cell(4, col, label)
+            if key not in ('image', 'remark_image'):
+                for row in range(5, original['Samples'].max_row + 1):
+                    sheet.cell(row, col, original['Samples'].cell(row, positions[key]).value)
+        meta = book.create_sheet('_sync')
+        meta['A1'], meta['A2'] = V2_SCHEMA, original['_sync']['A2'].value
+        meta.sheet_state = 'veryHidden'
+        out = io.BytesIO()
+        book.save(out)
+        return out.getvalue()
+
+    def test_original_v2_batch_still_imports_and_downgrade_is_rejected(self):
+        raw = self._export(self.factory)
+        previous = self._v2_file(raw)
+        with self.assertRaises(UserError):
+            self._preview(previous)
+        snapshot = self.env['sample.excel.snapshot'].sudo().search([
+            ('kind', '=', 'export')], order='id desc', limit=1)
+        snapshot.payload = dict(snapshot.payload, schema=V2_SCHEMA)
+        self._preview(self._edit(previous, J5='Original V2 return')).action_confirm()
+        self.assertEqual(self.line.factory_comment, 'Original V2 return')
 
     def test_duplicate_product_rows_sort_and_update_original_line(self):
         self.line_b.write({'supplier_id': self.factory.id, 'quantity': 2, 'sample_color': 'White'})
@@ -136,7 +191,7 @@ class TestSampleExcelSync(TransactionCase):
 
     def _offline_package(self):
         rows = self.env['sample.excel.service'].with_user(self.editor)._export_rows(self.request)
-        rows = [{k: v for k, v in row.items() if k != 'image'} for row in rows]
+        rows = [{k: v for k, v in row.items() if k not in ('image', 'remark_image')} for row in rows]
         token = secrets.token_urlsafe(32)
         raw = build_workbook(self.request.name, token, rows)
         now = fields.Datetime.now()
@@ -163,7 +218,7 @@ class TestSampleExcelSync(TransactionCase):
         snapshot = self._register(raw, data)
         self.assertEqual(snapshot.user_id, self.editor)
         self.assertEqual(before, (self.line.sample_color, self.line.factory_comment, self.line_b.factory_comment))
-        wizard = self._preview(self._edit(raw, J5='Offline export returned'))
+        wizard = self._preview(self._edit(raw, K5='Offline export returned'))
         wizard.action_confirm()
         self.assertEqual(self.line.factory_comment, 'Offline export returned')
         self.assertFalse(self.line_b.factory_comment)
@@ -190,7 +245,7 @@ class TestSampleExcelSync(TransactionCase):
             self._register(raw, data)
 
     def test_roundtrip_changes_only_requested_field(self):
-        wizard = self._preview(self._edit(self._export(self.factory), I5='2026-11-18'))
+        wizard = self._preview(self._edit(self._export(self.factory), J5='2026-11-18'))
         self.assertEqual(len(wizard.change_ids), 1)
         wizard.action_confirm()
         self.assertEqual(str(self.line.factory_ready_date), '2026-11-18')
@@ -200,7 +255,7 @@ class TestSampleExcelSync(TransactionCase):
         self.assertFalse(again.change_ids)
 
     def test_reimport_of_updated_file_is_noop(self):
-        raw = self._edit(self._export(self.factory), J5='Ready')
+        raw = self._edit(self._export(self.factory), K5='Ready')
         self._preview(raw).action_confirm()
         self.assertFalse(self._preview(raw).change_ids)
 
@@ -223,26 +278,26 @@ class TestSampleExcelSync(TransactionCase):
     def test_server_only_change_is_preserved(self):
         raw = self._export(self.factory)
         self.line.sample_color = 'Black'
-        self._preview(self._edit(raw, J5='Factory response')).action_confirm()
+        self._preview(self._edit(raw, K5='Factory response')).action_confirm()
         self.assertEqual(self.line.sample_color, 'Black')
 
     def test_stale_preview_rejected(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Ready'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Ready'))
         self.line.factory_comment = 'Changed after preview'
         with self.assertRaises(UserError):
             wizard.action_confirm()
         self.assertEqual(self.line.factory_comment, 'Changed after preview')
 
     def test_preview_display_values_cannot_override_trusted_plan(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Safe'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Safe'))
         wizard.change_ids.write({'incoming_value': 'FORGED', 'field_name': 'state'})
         wizard.action_confirm()
         self.assertEqual(self.line.factory_comment, 'Safe')
         self.assertNotEqual(self.line.state, 'FORGED')
 
     def test_changed_file_after_preview_rejected(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Safe'))
-        wizard.file_data = base64.b64encode(self._edit(self._export(self.factory), J5='Other'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Safe'))
+        wizard.file_data = base64.b64encode(self._edit(self._export(self.factory), K5='Other'))
         with self.assertRaises(UserError):
             wizard.action_confirm()
 
@@ -250,7 +305,7 @@ class TestSampleExcelSync(TransactionCase):
         raw = self._export(self.factory)
         with self.assertRaises(UserError):
             self._preview(raw, self.other)
-        wizard = self._preview(self._edit(raw, J5='Ready'))
+        wizard = self._preview(self._edit(raw, K5='Ready'))
         with self.assertRaises(AccessError):
             wizard.with_user(self.other).action_confirm()
 
@@ -267,18 +322,18 @@ class TestSampleExcelSync(TransactionCase):
     def test_foreign_row_cancel_and_moved_factory_rejected(self):
         raw = self._export(self.factory)
         with self.assertRaises(UserError):
-            self._preview(self._edit(raw, K5='forged-key', J5='Ready'))
+            self._preview(self._edit(raw, L5='forged-key', K5='Ready'))
         self.line.supplier_id = self.factory_b
         with self.assertRaises(UserError):
-            self._preview(self._edit(raw, J5='Ready'))
+            self._preview(self._edit(raw, K5='Ready'))
 
     def test_cancelled_line_and_request_not_updated(self):
         self.line.state = 'cancelled'
         with self.assertRaises(UserError):
-            self._preview(self._edit(self._export(self.factory), J5='Ready'))
+            self._preview(self._edit(self._export(self.factory), K5='Ready'))
 
     def test_preview_is_consumed(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Ready'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Ready'))
         wizard.action_confirm()
         with self.assertRaises(UserError):
             wizard.action_confirm()
@@ -300,7 +355,7 @@ class TestSampleExcelSync(TransactionCase):
         unlinked = Task.create({'name': 'Synthetic unlinked task', 'x_sample_ready_date': '2026-11-10',
                                'user_ids': [(6, 0, [self.editor.id])]})
         state = self.line.state
-        self._preview(self._edit(self._export(self.factory), I5='2026-11-18')).action_confirm()
+        self._preview(self._edit(self._export(self.factory), J5='2026-11-18')).action_confirm()
         self.assertEqual(str(task.x_sample_ready_date), '2026-11-18')
         self.assertEqual(str(unlinked.x_sample_ready_date), '2026-11-10')
         self.assertEqual(self.line.state, state)
@@ -313,10 +368,10 @@ class TestSampleExcelSync(TransactionCase):
             Task.create({'name': 'Synthetic task ' + suffix, 'x_sample_line_id': self.line.id,
                          'user_ids': [(6, 0, [self.editor.id])]})
         with self.assertRaises(UserError):
-            self._preview(self._edit(self._export(self.factory), I5='2026-11-18'))
+            self._preview(self._edit(self._export(self.factory), J5='2026-11-18'))
 
     def test_lost_record_permission_prevents_update(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Ready'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Ready'))
         model = self.env['ir.model']._get('mlx.sample.request.line')
         self.env['ir.rule'].create({'name': 'Synthetic deny sample access',
                                    'model_id': model.id, 'domain_force': "[('id','=',0)]"})
@@ -330,10 +385,10 @@ class TestSampleExcelSync(TransactionCase):
         raw = self._export(self.factory)
         Task.create({'name': 'Synthetic hidden task', 'x_sample_line_id': self.line.id})
         with self.assertRaises(AccessError):
-            self._preview(self._edit(raw, I5='2026-11-18'))
+            self._preview(self._edit(raw, J5='2026-11-18'))
 
     def test_indirect_other_line_write_is_rolled_back(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Ready'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Ready'))
         model_class = type(self.line)
         original = model_class.write
         other_id = self.line_b.id
@@ -350,7 +405,7 @@ class TestSampleExcelSync(TransactionCase):
         self.assertFalse(self.line_b.sample_color)
 
     def test_unrelated_request_status_change_is_rolled_back(self):
-        wizard = self._preview(self._edit(self._export(self.factory), J5='Ready'))
+        wizard = self._preview(self._edit(self._export(self.factory), K5='Ready'))
         model_class = type(self.line)
         original = model_class.write
 

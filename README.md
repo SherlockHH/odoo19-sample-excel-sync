@@ -18,26 +18,27 @@ Sample Ready Date accepts a real Excel date or `YYYY-MM-DD` text. Put TBC, provi
 
 ## Workbook contents
 
-One sample line per table row, with a product thumbnail:
+One sample line per table row, with separate product and remark photos:
 
-The current layout uses subtle blue-grey headers, thin light-grey borders, and pale-yellow cells only in the four editable columns. Product photos are centered and scaled proportionally. Rows start at approximately 100 pt; exceptionally long wrapped descriptions expand to avoid truncation. Malex Model and Photo stay frozen with the header, and the entire table supports filtering and sorting.
+The current layout uses subtle blue-grey headers, thin light-grey borders, and pale-yellow cells only in the four editable columns. Product photos are centered and scaled proportionally. Rows start at approximately 100 pt; exceptionally long wrapped descriptions expand to avoid truncation. Factory, both model numbers and Photo stay frozen with the header, and the entire table supports filtering and sorting.
 
 | Column | Import behavior |
 |---|---|
-| Malex Model | Reference only |
-| Photo | Reference only |
-| Product Description | Read-only sample-line description, then linked product description |
-| Factory Model | Reference only |
 | Factory | Reference only |
+| Malex Model No | Reference only |
+| Factory Model No | Reference only |
+| Photo | Read-only product image |
+| Product Description | Read-only sample-line description, then linked product description |
 | Sample Qty | Reference only |
 | Color | Updates `sample_color` |
 | Remarks | Updates `remarks` |
+| Remark Photo | Read-only existing sample-line `x_remark_image` |
 | Sample Ready Date | Updates `factory_ready_date` |
 | Factory Feedback | Updates `factory_comment` |
 
 No customer information or additional packaging/certification fields are exported. Product Description prefers existing `product_description` on the sample line, then the linked product's `mlx_description_text`, `description`, or `description_sale`; existing HTML is converted to plain text. Remarks preserves the existing sample remarks, including special instructions, logo, accessories, and modification details already recorded there. Color/finish stays in `sample_color`. Values are never automatically moved between Color and Remarks.
 
-Series-level requirements must already be assigned to the relevant Odoo sample lines. The add-on does not infer them from old spreadsheet positions. Existing remark images (`x_remark_image`) are not exported in V1; record important requirements as text before use.
+Series-level requirements must already be assigned to the relevant Odoo sample lines. The add-on does not infer them from old spreadsheet positions. Existing remark images (`x_remark_image`) are exported in their own read-only Remark Photo column, centered and scaled proportionally. Original PNG/JPEG data is retained so users can enlarge the image in Excel. Lines without a remark image remain blank; a product photo is never substituted. Neither image column is imported or used to identify a record.
 
 ## Sorting and limits
 
@@ -110,7 +111,7 @@ A failed confirmation rolls back its transaction. Reverting code does **not** un
 
 ## Workbook compatibility and offline exports
 
-New workbooks use layout schema `/2`: exactly ten visible columns plus the hidden row identifier in column K. Original `/1` workbooks remain importable against their original trusted batches. The importer checks that a workbook's schema matches its server-side batch; changing headers or downgrading its metadata is rejected.
+New workbooks use layout schema `/3`: eleven visible columns plus the hidden row identifier in column L. Original `/1` and `/2` workbooks remain importable against their original trusted batches. Trusted original `/2` offline packages also remain registerable. The importer checks that a workbook's schema matches its server-side batch; changing headers or downgrading its metadata is rejected.
 
 When the module is not installed, a workbook cannot be imported into that Odoo instance yet. A formal offline export can retain an immutable baseline separately with the trusted exporter. After IT installs this add-on, an administrator may deliberately register that batch using the **original unedited workbook**, retained manifest, and a manifest digest received from the trusted exporter. Registration creates only export metadata; subsequent factory edits use the normal preview/import workflow. It never registers or imports automatically from a factory-returned file.
 

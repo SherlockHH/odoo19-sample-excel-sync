@@ -16,9 +16,9 @@
 
 完成日期仅接受正式 Excel 日期或 `YYYY-MM-DD` 文本。TBC、月底完成等说明写在 Factory Feedback。数量和产品识别列仅展示；删除行不会删除 Odoo 记录，不接受新增样品行。
 
-新版严格按 Malex Model、Photo、Product Description、Factory Model、Factory、Sample Qty、Color、Remarks、Sample Ready Date、Factory Feedback 排列；不增加客户、包装或认证字段。描述优先读取样品行 product_description，再读取关联产品现有描述。每条样品行占一行，Color 与 Remarks 不自动搬移数据，Remarks 保留现有备注中的特殊要求、Logo、配件和修改说明。系列要求需要先在 Odoo 对应样品行中明确维护，本模块不会从旧 Excel 的位置猜测其适用范围。现有备注图 `x_remark_image` 尚不导出，含重要要求的图片请先明确成文字；产品缩略图不能替代样品要求。
+新版严格按 Factory、Malex Model No、Factory Model No、Photo、Product Description、Sample Qty、Color、Remarks、Remark Photo、Sample Ready Date、Factory Feedback 排列；不增加客户、包装或认证字段。描述优先读取样品行 product_description，再读取关联产品现有描述。每条样品行占一行，Color 与 Remarks 不自动搬移数据，Remarks 保留现有备注中的特殊要求、Logo、配件和修改说明。系列要求需要先在 Odoo 对应样品行中明确维护，本模块不会从旧 Excel 的位置猜测其适用范围。现有备注图 `x_remark_image` 单独导出到只读的 Remark Photo 列，保留原始 PNG/JPEG 图片供 Excel 放大查看；没有备注图时留空，不用产品图替代。图片不参与导入和行匹配。
 
-新版使用低饱和蓝灰色表头、浅灰细边框，仅 Color、Remarks、Sample Ready Date、Factory Feedback 四列为淡黄色；图片居中等比例缩放，冻结型号、图片和表头，支持完整表排序筛选。默认约 100 pt 行高，特别长的描述自动加高，避免截断。
+新版使用低饱和蓝灰色表头、浅灰细边框，仅 Color、Remarks、Sample Ready Date、Factory Feedback 四列为淡黄色；图片居中等比例缩放，冻结工厂、两列型号、产品图片和表头，支持完整表排序筛选。默认约 100 pt 行高，特别长的描述自动加高，避免截断。
 
 ## Excel 排序与限制
 
@@ -125,3 +125,5 @@ License: LGPL-3.0-or-later. 第三方库和既有 Odoo/业务模块保留其各�
 如果线上尚未安装模块，当前 Odoo 就没有该导入入口。正式离线导出可以把原值批次单独保存在导出人手里；IT 安装模块后，由管理员用未编辑的原始 Excel、可信批次 JSON，以及从原导出人另行取得的 SHA256 登记批次，再走正常的编辑、预览、导入流程。登记仅创建内部批次元数据，不修改样品字段。
 
 批次 JSON 不要发给工厂，也不要放入公开仓库。不要用工厂回传的文件重建原值批次。详见 [IT 批次登记说明](docs/offline-registration.md)。此次开发不部署生产，也不登记生产批次。
+
+新版布局标识为 `/3`，共 11 个可见列，隐藏行标识在 L 列。原 `/1`、`/2` 文件仍可按原批次导入；可信的原 `/2` 离线批次仍可登记。

@@ -8,8 +8,9 @@ import openpyxl
 import xlsxwriter
 from defusedxml.ElementTree import fromstring
 from PIL import Image, UnidentifiedImageError
+from xlsxwriter.image import Image as DrawingImage
 
-from .constants import (COLUMNS, EDITABLE, LEGACY_COLUMNS, LEGACY_SCHEMA,
+from .constants import (COLUMNS, EDITABLE, IMAGE_KEYS, LAYOUTS,
                         MAX_EXPANDED, MAX_FILE, MAX_ROWS, MAX_TEXT, SCHEMA)
 
 
@@ -42,19 +43,22 @@ def _date(value):
     return result.isoformat()
 
 
-def _thumbnail(raw):
+def _thumbnail(raw, size=(110, 110), preserve_original=False):
     if len(raw) > 4 * 1024 * 1024:
-        raise ValueError('An image is too large. Use a smaller product image.')
+        raise ValueError('An image is too large. Use a smaller sample image.')
     try:
         with Image.open(io.BytesIO(raw)) as img:
             if img.width * img.height > 16_000_000:
                 raise ValueError('An image has too many pixels.')
-            img.thumbnail((110, 110))
+            if preserve_original and img.format in ('PNG', 'JPEG'):
+                return raw
+            if not preserve_original:
+                img.thumbnail(size)
             out = io.BytesIO()
             img.convert('RGB').save(out, format='PNG')
             return out.getvalue()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
-        raise ValueError('Invalid product image.') from exc
+        raise ValueError('Invalid sample image.') from exc
 
 
 def build_workbook(request_name, batch_token, rows):
@@ -90,7 +94,7 @@ def build_workbook(request_name, batch_token, rows):
     sheet.write_string(0, 0, 'Sample Request', title)
     sheet.write_string(1, 0, str(request_name), note)
     sheet.write_string(2, 0, 'Editable fields are pale yellow: Color, Remarks, Sample Ready Date and Factory Feedback.', note)
-    widths = [21, 20, 62, 22, 28, 12, 28, 42, 20, 42, 40]
+    widths = [28, 21, 22, 20, 62, 12, 28, 42, 36, 20, 42, 40]
     for col, width in enumerate(widths):
         sheet.set_column(col, col, width, None, {'hidden': col == len(COLUMNS) - 1})
     sheet.set_row(3, 36)
@@ -100,20 +104,31 @@ def build_workbook(request_name, batch_token, rows):
                             for col, (key, _) in enumerate(COLUMNS)
                             if key in ('product_description', 'remarks', 'factory_comment'))
         row_height = min(409, max(100, wrapped_lines * 13 + 12))
+        pictures = {}
+        for key in IMAGE_KEYS:
+            value = row.get(key)
+            if value:
+                size = (240, 180) if key == 'remark_image' else (110, 110)
+                data = _thumbnail(value, size, preserve_original=key == 'remark_image')
+                picture = DrawingImage(io.BytesIO(data))
+                width, height = picture.width, picture.height
+                scale = min(1, size[0] / width, size[1] / height)
+                pictures[key] = (data, width * scale, height * scale,
+                                 scale * picture.x_dpi / 96, scale * picture.y_dpi / 96)
+                row_height = max(row_height, (height * scale + 12) * 0.75)
         sheet.set_row(index, row_height)
         for col, (key, _) in enumerate(COLUMNS):
             value = row.get(key)
-            if key == 'image':
+            if key in IMAGE_KEYS:
                 sheet.write_blank(index, col, None, plain)
-                if value:
-                    thumb = _thumbnail(value)
-                    with Image.open(io.BytesIO(thumb)) as picture:
-                        width, height = picture.size
-                    sheet.insert_image(index, col, 'product.png', {
-                        'image_data': io.BytesIO(thumb), 'object_position': 1,
+                if key in pictures:
+                    data, width, height, x_scale, y_scale = pictures[key]
+                    sheet.insert_image(index, col, key + '.png', {
+                        'image_data': io.BytesIO(data), 'object_position': 1,
+                        'x_scale': x_scale, 'y_scale': y_scale,
                         'x_offset': max(5, (int(widths[col] * 7 + 5) - width) // 2),
                         'y_offset': max(5, (int(row_height * 4 / 3) - height) // 2),
-                        'description': row.get('model') or 'Product',
+                        'description': ('Remark photo: ' if key == 'remark_image' else 'Product: ') + (row.get('model') or 'Sample'),
                     })
             elif key == 'quantity' and isinstance(value, (int, float)) and not isinstance(value, bool):
                 sheet.write_number(index, col, value, plain)
@@ -140,7 +155,7 @@ def build_workbook(request_name, batch_token, rows):
         'maximum': date(2200, 12, 31), 'ignore_blank': True,
         'error_title': 'Use a date', 'error_message': 'Enter a date. Put TBC in Factory Feedback.',
     })
-    sheet.freeze_panes(4, 2)
+    sheet.freeze_panes(4, 4)
     sheet.set_landscape()
     sheet.fit_to_pages(1, 0)
     sheet.repeat_rows(3)
@@ -192,9 +207,9 @@ def parse_workbook(raw, *, include_schema=False):
                 raise ValueError('Use a workbook exported by Sample Excel Sync.')
             meta = book['_sync']
             schema = meta['A1'].value
-            if schema not in (SCHEMA, LEGACY_SCHEMA):
+            if schema not in LAYOUTS:
                 raise ValueError('Unsupported workbook version. Export a fresh file.')
-            columns = COLUMNS if schema == SCHEMA else LEGACY_COLUMNS
+            columns = LAYOUTS[schema]
             token = _text(meta['A2'].value)
             if not token:
                 raise ValueError('Missing export identifier.')
@@ -212,7 +227,7 @@ def parse_workbook(raw, *, include_schema=False):
                 for cell, (key, _) in zip(cells, columns):
                     if cell.data_type in ('f', 'e'):
                         raise ValueError('Formulas and error cells cannot be imported.')
-                    if key == 'image':
+                    if key in IMAGE_KEYS:
                         continue
                     if key == 'factory_ready_date':
                         row[key] = _date(cell.value)

@@ -5,7 +5,7 @@ from odoo import api, fields, models
 from odoo.exceptions import UserError
 
 from ..core.workbook import build_workbook
-from ..core.constants import SCHEMA
+from ..core.constants import IMAGE_KEYS, SCHEMA
 
 
 class SampleExcelExport(models.TransientModel):
@@ -33,7 +33,7 @@ class SampleExcelExport(models.TransientModel):
         supplier = self.supplier_id if self.scope == 'factory' else False
         service = self.env['sample.excel.service']
         rows = service._export_rows(self.request_id, supplier)
-        bases = [{k: v for k, v in row.items() if k != 'image'} for row in rows]
+        bases = [{k: v for k, v in row.items() if k not in IMAGE_KEYS} for row in rows]
         snapshot = self.env['sample.excel.snapshot']._store(self.request_id, 'export', {'rows': bases, 'schema': SCHEMA})
         try:
             raw = build_workbook(self.request_id.name, snapshot.token, rows)

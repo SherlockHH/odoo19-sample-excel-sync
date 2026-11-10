@@ -1,4 +1,4 @@
-from .constants import EDITABLE, LEGACY_READONLY, LEGACY_SCHEMA, READONLY, SCHEMA
+from .constants import EDITABLE, LAYOUTS, LEGACY_READONLY, LEGACY_SCHEMA, READONLY, SCHEMA
 
 
 def _canonical(value):
@@ -20,9 +20,9 @@ def _index(rows):
 def compare_rows(baselines, current_rows, submitted_rows, *, schema=SCHEMA):
     """Field-level three-way comparison; omitted rows never mean deletion."""
     bases, current, incoming = map(_index, (baselines, current_rows, submitted_rows))
-    if schema not in (SCHEMA, LEGACY_SCHEMA):
+    if schema not in LAYOUTS:
         raise ValueError('Unsupported workbook layout.')
-    readonly = READONLY if schema == SCHEMA else LEGACY_READONLY
+    readonly = LEGACY_READONLY if schema == LEGACY_SCHEMA else READONLY
     changes = []
     for key, row in incoming.items():
         if key not in bases or key not in current:
