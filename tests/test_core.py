@@ -128,9 +128,9 @@ class WorkbookTests(unittest.TestCase):
             first = [c.value for c in sheet[5]]
             second = [c.value for c in sheet[6]]
             for col, value in enumerate(second, 1):
-                sheet.cell(5, col, value)
+                sheet.cell(5, col).value = value
             for col, value in enumerate(first, 1):
-                sheet.cell(6, col, value)
+                sheet.cell(6, col).value = value
         _, rows = parse_workbook(edited_file(self.raw, edit))
         self.assertEqual([r['key'] for r in rows], ['opaque-two', 'opaque-row-one'])
 

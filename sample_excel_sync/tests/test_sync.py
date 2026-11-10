@@ -105,15 +105,20 @@ class TestSampleExcelSync(TransactionCase):
         sheet = book['Samples']
         first, second = [c.value for c in sheet[5]], [c.value for c in sheet[6]]
         for col, value in enumerate(second, 1):
-            sheet.cell(5, col, value)
+            sheet.cell(5, col).value = value
         for col, value in enumerate(first, 1):
-            sheet.cell(6, col, value)
+            sheet.cell(6, col).value = value
         sheet['G5'] = 'Pantone 4222C'
         out = io.BytesIO()
         book.save(out)
-        self._preview(out.getvalue()).action_confirm()
+        wizard = self._preview(out.getvalue())
+        self.assertEqual(len(wizard.change_ids), 1)
+        self.assertEqual(wizard.change_ids.field_name, 'sample_color')
+        wizard.action_confirm()
         self.assertEqual(self.line.sample_color, 'Silver')
         self.assertEqual(self.line_b.sample_color, 'Pantone 4222C')
+        self.assertEqual(self.line.remarks, 'Chrome handle')
+        self.assertFalse(self.line_b.remarks)
 
     def test_layout_downgrade_rejected(self):
         legacy = self._legacy_file(self._export(self.factory))
