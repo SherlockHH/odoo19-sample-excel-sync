@@ -94,6 +94,11 @@ class ComparisonTests(unittest.TestCase):
         self.assertEqual(len(compare_rows([row], [row],
                                          [dict(row, factory_comment='Ready')])), 1)
 
+    def test_excel_line_ending_normalization_is_not_a_change(self):
+        base = sample(factory_comment='Line one\r\nLine two', factory='Demo\r\nFactory')
+        incoming = sample(factory_comment='Line one\nLine two', factory='Demo\nFactory')
+        self.assertEqual(compare_rows([base], [base], [incoming]), [])
+
 
 class WorkbookTests(unittest.TestCase):
     def setUp(self):

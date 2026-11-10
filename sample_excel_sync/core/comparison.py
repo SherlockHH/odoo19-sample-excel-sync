@@ -1,6 +1,12 @@
 from .constants import EDITABLE, READONLY
 
 
+def _canonical(value):
+    if value is None or value is False:
+        return ''
+    return value.replace('\r\n', '\n').replace('\r', '\n') if isinstance(value, str) else value
+
+
 def _index(rows):
     indexed = {}
     for row in rows:
@@ -20,10 +26,10 @@ def compare_rows(baselines, current_rows, submitted_rows):
             raise ValueError('Unknown or no longer accessible sample row. Export again.')
         base, now = bases[key], current[key]
         for field in READONLY:
-            if row.get(field, '') != base.get(field, ''):
+            if _canonical(row.get(field)) != _canonical(base.get(field)):
                 raise ValueError('An identification/reference column was changed. Export again.')
         for field in EDITABLE:
-            old, live, new = (r.get(field) or '' for r in (base, now, row))
+            old, live, new = (_canonical(r.get(field)) for r in (base, now, row))
             if new == old or new == live:
                 continue
             if now.get('cancelled') or now.get('state') == 'Cancelled':
