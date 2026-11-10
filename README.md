@@ -1,98 +1,115 @@
 # Sample Excel Export & Update — Odoo 19
 
-独立 Odoo 19 add-on：样品单导出 Excel，工厂修改后预览差异并回填原样品行。Odoo 是最终数据来源。
+English | [简体中文](README.zh-CN.md)
 
-**状态：候选版本。** 自动测试使用合成样品模块验证 Odoo 19 框架行为，不代表公司原有自定义模块、Excel/WPS 或正式环境已验收。请先在隔离测试环境安装。
+An independent Odoo 19 add-on for exporting sample requests to Excel and previewing updates returned by factories. Odoo remains the source of truth.
 
-## 使用
+**Release status: candidate.** Automated integration tests use a synthetic Sample Request contract. They do not establish compatibility with your company's existing custom modules or verify Excel/WPS behavior. Install in isolated staging first.
 
-1. 打开样品单，点击 **Export Sample Excel**，选择全部样品行或当前单内的一家工厂。
-2. 将文件发给工厂，仅编辑蓝色列：Color & Finish、Other Sample Requirements、Sample Ready Date、Factory Feedback。
-3. **由原导出人**打开同一样品单，点击 **Import Sample Updates** 上传返回文件。
-4. 点击 **Preview Changes**。未变化字段隐藏；普通更新默认使用 Excel，清空默认忽略；真正冲突必须选择使用 Excel 或保留 Odoo。
-5. **Confirm Update** 保存，样品单现有消息区记录成功修改。再次导出会包含已保存值。
+## Workflow
 
-完成日期仅接受正式 Excel 日期或 `YYYY-MM-DD` 文本。TBC、月底完成等说明写在 Factory Feedback。数量和产品识别列仅展示；删除行不会删除 Odoo 记录，不接受新增样品行。
+1. Open a Sample Request and click **Export Sample Excel**. Choose **All Sample Lines** or **Selected Factory** within that request.
+2. Send the workbook to the factory. Edit only the blue columns: **Color & Finish**, **Other Sample Requirements**, **Sample Ready Date**, and **Factory Feedback**.
+3. The **original exporter** opens the same request and clicks **Import Sample Updates** to upload the returned workbook.
+4. Click **Preview Changes**. Only changed fields appear. Ordinary updates default to Excel; clears default to ignore. Resolve genuine conflicts by choosing Excel or the current Odoo value.
+5. Click **Confirm Update**. Successful field changes are recorded in the request's existing chatter. The next export includes the saved values.
 
-不包含客户信息、规格、认证；表头只包含样品单号。每条样品行占一行。现有 Plug/Logo 放在独立只读参考列，防止把显示附注反复写进可编辑 remarks。系列要求需要先在 Odoo 对应样品行中明确维护，本模块不会从旧 Excel 的位置猜测其适用范围。现有备注图 `x_remark_image` 尚不导出，含重要要求的图片请先明确成文字；产品缩略图不能替代样品要求。
+Sample Ready Date accepts a real Excel date or `YYYY-MM-DD` text. Put TBC, provisional timing, and explanations in Factory Feedback. Quantities and identification columns are read-only references. Removing an Excel row does not delete its Odoo record, and new sample rows cannot be imported.
 
-## Excel 排序与限制
+## Workbook contents
 
-- 使用完整 Excel 表格的筛选/排序功能；隐藏 Record Key 列属于同一张表。不要只排序部分列、改列名或删除隐藏标识页。
-- 产品图片设置为随单元格移动和缩放；Excel/WPS 的实际排序行为仍需人工验收。导入不依赖图片识别产品。
-- 不完整型号、数量不阻止按有效行标识回填。改动识别列会提示重新导出。
-- 最多 2000 行、文件最大 8 MB、解压最大 48 MB、文本单元格最多 8000 字符。
-- 不接受宏、嵌入对象、外部链接、公式或错误单元格。导出的 `=...` 等原始备注被保存为纯文本。
-- 导出快照有效期 90 天；预览有效期 24 小时。系统定期清理过期内部元数据，没有批次管理页面。
-- 工厂不需要 Odoo 账号；返回文件由原导出人回填。Excel 文件本身包含样品业务信息，应按公司流程分发。
+One sample line per table row, with a product thumbnail:
 
-## 安装（交给 IT）
+| Column | Import behavior |
+|---|---|
+| Factory | Reference only |
+| Malex Model | Reference only |
+| Factory Model | Reference only |
+| Photo | Reference only |
+| Sample Qty | Reference only |
+| Color & Finish | Updates `sample_color` |
+| Other Sample Requirements | Updates `remarks` |
+| Sample Ready Date | Updates `factory_ready_date` |
+| Factory Feedback | Updates `factory_comment` |
+| Plug / Logo | Reference only |
+| Line Status | Reference only |
 
-本模块包含 Python 代码，需由 IT 部署到 Odoo 服务的 addons 路径。GitHub 下载并不自动安装，网页的 ZIP 导入功能也不一定支持 Python add-on。
+No customer information, specifications, or certifications are exported. The heading contains only the request reference. Existing plug/logo values stay separate from editable remarks to prevent duplicated text on repeated round trips.
 
-1. 确认 **Odoo 19**，已安装公司提供的 `sample_management_mlx`、`project` 和 `mail`。
-2. 先在测试环境备份数据库与 filestore，并停用外发邮件、短信、Webhook 等真实外部发送。
-3. 在 **Odoo 服务实际使用的 Python 环境**安装根目录 `requirements.txt` 中的库；不要随意替换整个 Odoo 的依赖集合。先验证版本兼容。
-4. 将仓库中的 **`sample_excel_sync/`** 目录复制到自定义 addons 路径（或使用发布的专用模块 ZIP，先解压）。
-5. 重启 Odoo 服务、更新应用列表，安装 **Sample Excel Export & Update**。
-6. 验收通过后，对正式环境备份并由 IT 部署同一提交。后续代码更新使用 `-u sample_excel_sync`。
+Series-level requirements must already be assigned to the relevant Odoo sample lines. The add-on does not infer them from old spreadsheet positions. Existing remark images (`x_remark_image`) are not exported in V1; record important requirements as text before use. A product thumbnail does not replace sample instructions.
 
-**绝不要部署 `ci/fixtures/sample_management_mlx`。它是自动测试用的合成替身，不是公司的业务模块。**
+## Sorting and limits
 
-仓库目录结构：
+- Sort/filter the **entire Excel table**, which includes its hidden Record Key column. Do not sort a subset of columns, rename headers, or remove the hidden metadata sheet.
+- Images are configured to move and resize with cells. Actual sorting behavior still needs manual acceptance in Excel and WPS. Import never uses an image to identify a record.
+- Missing model numbers or quantities do not prevent updates when row identity is valid. Edited identification columns require a fresh export.
+- Maximum 2,000 rows, 8 MB uploaded file, 48 MB expanded archive, and 8,000 characters per text cell.
+- Macros, embedded active objects, external links, formulas, and error cells are rejected. Formula-like source remarks such as `=...` are exported as literal text.
+- Export snapshots expire after 90 days; previews expire after 24 hours. Expired internal metadata is removed by Odoo autovacuum. There is no batch management screen.
+- Factories do not need Odoo accounts. Returned workbooks are imported by the original exporter. Handle workbook business data under your company's sharing rules.
+
+## Installation for IT
+
+This module contains Python code and must be deployed to the Odoo service's addons path. Downloading the repository does not install it. A browser ZIP-import feature may not support Python add-ons.
+
+1. Confirm **Odoo 19** with the company's existing `sample_management_mlx`, `project`, and `mail` modules installed.
+2. Back up the staging database and filestore. Disable real outgoing email, SMS, webhooks, and other external delivery in staging.
+3. Install the libraries in root `requirements.txt` into the **Python environment used by the Odoo service**. Validate compatibility before changing the service's existing dependencies.
+4. Copy only **`sample_excel_sync/`** into a custom addons path, or extract the dedicated module ZIP from a release.
+5. Restart Odoo, update the Apps list, and install **Sample Excel Export & Update**.
+6. Complete staging acceptance, then back up production and deploy the same tested commit. For later code updates, upgrade with `-u sample_excel_sync`.
+
+**Never deploy `ci/fixtures/sample_management_mlx`. It is a synthetic test substitute, not the company's business module.**
 
 ```text
-sample_excel_sync/   可安装模块（含 Odoo 集成测试）
-tests/              不需要 Odoo 的核心测试
-ci/fixtures/        仅 CI 的合成样品模块
-ci/Dockerfile       官方 Odoo 19 测试镜像
-tools/package.py    仅打包可安装模块
-docs/               设计、测试和部署说明
+sample_excel_sync/   Installable add-on, including Odoo integration tests
+tests/              Core tests that do not require Odoo
+ci/fixtures/        Synthetic contract used only by CI
+ci/Dockerfile       Official Odoo 19 test image with required libraries
+tools/package.py    Builds a ZIP containing only the installable add-on and docs
+docs/               Design, testing, and acceptance information
 ```
 
-## 兼容契约
+## Compatibility contract
 
-复用 `mlx.sample.request` 和 `mlx.sample.request.line`，不新建业务字段、不创建或删除样品行。
+The add-on reuses `mlx.sample.request` and `mlx.sample.request.line`. It adds no business fields and creates/deletes no sample lines.
 
-| Excel 可编辑列 | 现有字段 |
-|---|---|
-| Color & Finish | `sample_color` |
-| Other Sample Requirements | `remarks` |
-| Sample Ready Date | `factory_ready_date` |
-| Factory Feedback | `factory_comment` |
+The request model must provide `company_id`, `state`, `name`, and `line_ids`. Lines must provide `request_id`, `supplier_id`, `product_tmpl_id`, `quantity`, `state`, and the four writable fields listed above.
 
-请求需有 `company_id`、`state`、`name`、`line_ids`，行需有 `request_id`、`supplier_id`、`product_tmpl_id`、`quantity`、`state`。基础表单按唯一名称 `mlx.sample.request.form` 继承；若 IT 已更名或存在多个同名主表单，请在测试环境修正继承目标。
+The base request form is inherited by its verified unique name, `mlx.sample.request.form`. If that name has changed or several primary forms share it, IT must adjust the inheritance target in staging.
 
-取消的样品行仍导出并标识，但禁止修改；已取消或已解决的请求需先在原业务流程中重新打开。
+Cancelled sample lines are exported and labelled but cannot be updated. Cancelled or resolved requests must be reopened through the existing business workflow before import.
 
-### 精确任务联动
+### Existing task synchronization
 
-支持现有 `project.task.sample_request_line_id` 或旧版 `x_sample_line_id`。重复、冲突或跨公司的链接会阻止操作，不能用任务描述文字模糊匹配。仅当样品完成日期发生变化时，同步已有对应任务的 `sample_ready_date` / `x_sample_ready_date`，不新增任务、不主动改状态或安排活动。
+Exact links through `project.task.sample_request_line_id` or legacy `x_sample_line_id` are supported. Duplicate, conflicting, or cross-company links are rejected. Task descriptions are never used for fuzzy matching.
 
-为兼容已知旧模块，导入写入期间使用服务器内部 ContextVar，精确跳过以下两个会进行全量项目同步/状态跟进的旧服务器动作：
+Only a changed Sample Ready Date is mirrored to the existing linked task's `sample_ready_date` / `x_sample_ready_date`. The add-on does not create tasks, intentionally change status, or schedule activities.
+
+During its private import write section, an internal ContextVar narrowly skips these two known legacy server actions that perform broad project synchronization/status follow-up:
 
 - `sample_request_project_link.action_auto_sample_line_lifecycle`
 - `sample_request_project_link.action_auto_sample_task_stage_followup`
 
-并使用已有项目联动递归保护 context。保护范围只在本模块的确认写入调用栈内，不关闭自动化、不改其配置，也不跳过其他动作。没有这些 XML ID 的安装环境保持正常调用。未知 Python overrides/自动化仍可能存在，**IT 必须用真实自定义模块验证其副作用**。发现状态变化会使该次导入回滚。
+Existing recursion guards are also supplied. The scope is limited to this add-on's import call stack: no automation configuration is changed, and other actions are not suppressed. If those XML IDs are absent, normal execution continues. Unknown overrides or automations may still exist; **IT must verify side effects with the actual custom modules**. Unexpected protected changes roll the import back.
 
-## 权限、冲突与数据保护
+## Access, conflicts, and integrity
 
-只给内部用户提供两个 transient wizard；业务字段读取及写入始终使用当前用户的 ORM 权限、记录规则、字段权限及所选公司。唯一额外的关联核对是用 sudo 比较精确关联任务的数量，遇到当前用户看不到的任务直接拒绝操作，不返回其 ID 或内容。
+The two transient wizards are available to internal users. Business field reads/writes use the current user's ORM access, record rules, field permissions, and selected companies. A narrowly elevated **count of exact-linked tasks** detects links hidden by record rules; the operation then refuses without revealing task IDs or contents.
 
-隐藏列只携带不可猜测的行标识。真实行 ID、导出范围、原值和预览计划保存在 Odoo 内部私有快照中。普通用户不能创建、查看或修改快照；服务只在创建/查询自身内部元数据时使用 sudo。快照绑定导出人、请求及公司。
+Hidden cells contain opaque identifiers. Actual line IDs, scope, original values, and preview plans are stored in private server-side snapshots. Ordinary users cannot create, read, or edit them. Elevated operations are limited to internal metadata storage and the association-count check. Snapshots are bound to exporter, request, and company.
 
-确认前锁定预览、请求、相关行及已有任务，重新校验文件哈希、当前值、产品/工厂/请求身份、状态、任务链接与权限。更新用服务器计划生成，不信任预览显示列。预览一次性消费；相同文件重新预览后，已保存的内容自然成为无变化。
+Confirmation locks the preview, request, relevant sample lines, and existing tasks. It rechecks file hash, permissions, current values, product/factory/request identity, states, and task associations. Writes come from the trusted server plan, not mutable preview display fields. A preview is consumed once; re-importing the same file naturally produces no changes after a successful save.
 
-所有写入和消息记录完成后，再核对当前样品单的行身份、数量、状态、四个业务字段及精确关联任务的日期、状态、负责人和项目；发现超出本次允许修改范围的变化则回滚。
+After writes and chatter logging, the add-on checks the request's line identities, quantities, states, four editable fields, and exact-linked tasks' dates, states, assignees, and projects. Changes outside the permitted update set cause rollback.
 
-并发边界：旧版 `x_sample_line_id` 是整数关联，其他模块在独立事务中新建/重绑任务时不一定锁定样品行。本模块不对所有项目任务的创建/改绑增加全局钩子，因此不能宣称关联变更已完全串行化。IT 需要在测试环境验证此场景，并在导入期间避免同时重绑关联任务。
+**Concurrency boundary:** legacy `x_sample_line_id` is an integer link. Other modules may create or rebind tasks in separate transactions without locking sample rows. This add-on does not add global hooks to every task mutation and does not claim fully serialized association changes. IT must test this scenario and avoid simultaneous task relinking during imports.
 
-事务失败会撤销本次更新。回退旧代码**不会撤销已导入的数据**，需要根据消息记录人工恢复，或由 IT 按已验证的数据库/filestore恢复方案处理。
+A failed confirmation rolls back its transaction. Reverting code does **not** undo previously imported business data; use the change notes for manual correction or IT's tested database/filestore recovery procedure.
 
-## 开发与自动检查
+## Development and checks
 
-Windows：在仓库根目录建立 `.venv`，安装 `requirements-dev.txt`，双击 `运行程序.bat` 运行核心测试。它不是 Odoo 服务启动器。
+On Windows, create `.venv` at the repository root and install `requirements-dev.txt`. The included batch launcher runs core tests; it does not start an Odoo server.
 
 ```shell
 python -m venv .venv
@@ -104,12 +121,12 @@ python -m venv .venv
 .venv\Scripts\python tools/package.py
 ```
 
-GitHub Actions 会运行上述检查，并在官方 Odoo 19 + PostgreSQL 中安装模块、运行合成契约集成测试。仅使用本地合成数据和临时数据库，不连接生产 Odoo，不需要任何生产凭据。
+GitHub Actions runs these checks and installs/tests the add-on in official Odoo 19 with PostgreSQL and synthetic sample fixtures. It uses disposable data, never connects to production, and requires no production credentials.
 
-安全扫描没有发现问题不等于没有漏洞；扫描工具、依赖数据库及测试覆盖范围均有边界。详见 [验收清单](docs/acceptance.md)。
+Passing scans does not establish absence of vulnerabilities. Tool rules, advisory databases, and test coverage have limits. See the [staging acceptance checklist](docs/acceptance.md).
 
-## 公开仓库边界
+## Public repository policy
 
-仅包含原创模块代码、说明和合成测试资料。不得提交真实样品 Excel、客户资料、账号、API Key、生产数据库配置、数据库/filestore备份、原业务模块源码或本地环境目录。测试中出现的数据库密码仅用于销毁即弃的 CI PostgreSQL 服务。
+Include only original add-on code, documentation, and synthetic test data. Do not commit real sample workbooks, customer information, credentials, API keys, production connection settings, database/filestore backups, proprietary existing-module source, or local environments. The CI database password is only for a disposable PostgreSQL service.
 
-License: LGPL-3.0-or-later. 第三方库和既有 Odoo/业务模块保留其各自许可。
+License: **LGPL-3.0-or-later**. Third-party libraries and existing Odoo/business modules retain their respective licenses.
