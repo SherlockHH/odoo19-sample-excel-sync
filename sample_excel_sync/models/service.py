@@ -9,6 +9,7 @@ from odoo.exceptions import AccessError, UserError
 
 from ..core.constants import EDITABLE, LABELS, MAX_ROWS
 from ..core.description import choose_description
+from ..core.images import PRODUCT_IMAGE_FIELDS, choose_product_image
 from .automation_guard import narrow_import_guard
 
 
@@ -102,7 +103,9 @@ class SampleExcelService(models.AbstractModel):
             'state': 'Cancelled' if line.state == 'cancelled' else selection.get(line.state, line.state) or '',
         }
         if image:
-            value = (line.x_product_image if 'x_product_image' in line._fields else False) or product.image_256
+            value = choose_product_image(
+                line.x_product_image if 'x_product_image' in line._fields else False,
+                {name: product[name] for name in PRODUCT_IMAGE_FIELDS if name in product._fields})
             if value:
                 row['image'] = base64.b64decode(value)
             if 'x_remark_image' in line._fields and line.x_remark_image:

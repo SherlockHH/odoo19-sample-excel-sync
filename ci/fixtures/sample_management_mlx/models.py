@@ -26,6 +26,7 @@ class Line(models.Model):
     sample_color = fields.Char()
     remarks = fields.Text()
     x_remark_image = fields.Binary()
+    x_product_image = fields.Binary(related='product_tmpl_id.image_128')
     factory_ready_date = fields.Date()
     factory_comment = fields.Text()
     product_description = fields.Text(readonly=True)

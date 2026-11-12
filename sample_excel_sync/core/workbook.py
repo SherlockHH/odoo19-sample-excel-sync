@@ -72,7 +72,7 @@ def build_workbook(request_name, batch_token, rows):
     meta.very_hidden()
     meta.write_string(0, 0, SCHEMA)
     meta.write_string(1, 0, batch_token)
-    # Version 2: ten business columns, yellow only on editable fields.
+    # Eleven visible columns; yellow only on the four editable fields.
     title = book.add_format({'font_name': 'Calibri', 'bold': True, 'font_size': 16,
                              'font_color': '#000000'})
     body = {'font_name': 'Calibri', 'font_size': 11,
@@ -109,7 +109,7 @@ def build_workbook(request_name, batch_token, rows):
             value = row.get(key)
             if value:
                 size = (240, 180) if key == 'remark_image' else (110, 110)
-                data = _thumbnail(value, size, preserve_original=key == 'remark_image')
+                data = _thumbnail(value, size, preserve_original=True)
                 picture = DrawingImage(io.BytesIO(data))
                 width, height = picture.width, picture.height
                 scale = min(1, size[0] / width, size[1] / height)

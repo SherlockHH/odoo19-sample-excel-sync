@@ -42,6 +42,8 @@ Series-level requirements must already be assigned to the relevant Odoo sample l
 
 ## Sorting and limits
 
+Product Photo now retains full-resolution PNG/JPEG data and only scales its display to fit the cell. If a sample-line photo matches a product derivative (including the related `image_128`), the add-on uses the largest available product image, starting with `image_1920`. A distinct sample-specific photo remains the source. Remark photos keep the same behavior. Enlarging the image in Excel exposes the retained resolution; source images that are already small cannot gain detail. Higher-resolution files still follow the existing 8 MB workbook and image safety limits.
+
 - Sort/filter the **entire Excel table**, which includes its hidden Record Key column. Do not sort a subset of columns, rename headers, or remove the hidden metadata sheet.
 - Images are configured to move and resize with cells. Actual sorting behavior still needs manual acceptance in Excel and WPS. Import never uses an image to identify a record.
 - Missing model numbers or quantities do not prevent updates when row identity is valid. Edited identification columns require a fresh export.

@@ -205,6 +205,16 @@ class WorkbookTests(unittest.TestCase):
         self.assertTrue(all(p.width == p.height * 2 for p in sheet._images))
         self.assertEqual(parse_workbook(raw)[1], [sample(), sample(key='no-remark')])
 
+    def test_product_photo_retains_full_resolution_and_original_bytes(self):
+        photo = io.BytesIO()
+        Image.new('RGB', (1200, 800), 'green').save(photo, 'JPEG', quality=95)
+        original = photo.getvalue()
+        raw = build_workbook('SMP-DEMO', 'export', [sample(image=original)])
+        sheet = load_workbook(io.BytesIO(raw))['Samples']
+        self.assertEqual((sheet._images[0].width, sheet._images[0].height), (1200, 800))
+        with ZipFile(io.BytesIO(raw)) as archive:
+            self.assertIn(original, [archive.read(n) for n in archive.namelist() if n.startswith('xl/media/')])
+
     def test_previous_ten_column_file_still_imports(self):
         raw = v2_file(self.rows)
         edited = edited_file(raw, lambda w: setattr(w['Samples']['J5'], 'value', 'V2 return'))
@@ -329,6 +339,27 @@ class DescriptionTests(unittest.TestCase):
         from sync_core.description import choose_description
         self.assertEqual(choose_description('Brewing time: <10 MINS\nTemperature: >75℃', {}),
                          'Brewing time: <10 MINS\nTemperature: >75℃')
+
+
+class ProductImageTests(unittest.TestCase):
+    def choose(self, line, images):
+        from sync_core.images import choose_product_image
+        return choose_product_image(line, images)
+
+    def test_related_thumbnail_uses_full_product_image(self):
+        self.assertEqual(self.choose(b'thumbnail', {'image_128': b'thumbnail', 'image_1920': b'original'}), b'original')
+
+    def test_api_string_and_orm_bytes_match_the_same_thumbnail(self):
+        self.assertEqual(self.choose('thumbnail', {'image_128': b'thumbnail', 'image_1920': b'original'}), b'original')
+
+    def test_distinct_sample_specific_photo_is_preserved(self):
+        self.assertEqual(self.choose(b'custom-sample', {'image_128': b'thumbnail', 'image_1920': b'original'}), b'custom-sample')
+
+    def test_absent_sample_photo_uses_largest_available_master(self):
+        self.assertEqual(self.choose(False, {'image_1920': False, 'image_1024': b'large', 'image_256': b'small'}), b'large')
+
+    def test_no_photos_remains_blank(self):
+        self.assertFalse(self.choose(False, {}))
 
 
 

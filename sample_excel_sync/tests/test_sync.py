@@ -124,6 +124,20 @@ class TestSampleExcelSync(TransactionCase):
         self.assertEqual(self.line.x_remark_image, original_image)
         self.assertFalse(self.line_b.factory_comment)
 
+    def test_related_thumbnail_exports_master_resolution_without_changing_imports(self):
+        picture = io.BytesIO()
+        Image.new('RGB', (1200, 800), 'green').save(picture, 'JPEG', quality=95)
+        self.product.image_1920 = base64.b64encode(picture.getvalue())
+        raw = self._export(self.factory)
+        sheet = load_workbook(io.BytesIO(raw))['Samples']
+        photo = sheet._images[0]
+        self.assertEqual((photo.width, photo.height), (1200, 800))
+        self.assertEqual(photo._data(), base64.b64decode(self.product.image_1920))
+        self._preview(self._edit(raw, K5='Image quality verified')).action_confirm()
+        self.assertEqual(self.line.factory_comment, 'Image quality verified')
+        with Image.open(io.BytesIO(base64.b64decode(self.line.x_product_image))) as thumbnail:
+            self.assertLessEqual(max(thumbnail.size), 128)
+
     def _v2_file(self, raw):
         original = load_workbook(io.BytesIO(raw))
         book = Workbook()
