@@ -7,7 +7,7 @@ from markupsafe import Markup
 from odoo import api, fields, models
 from odoo.exceptions import AccessError, UserError
 
-from ..core.constants import EDITABLE, LABELS, MAX_ROWS
+from ..core.constants import EDITABLE, IMAGE_KEYS, LABELS, MAX_IMAGE_DATA, MAX_ROWS
 from ..core.description import choose_description
 from ..core.images import PRODUCT_IMAGE_FIELDS, choose_product_image
 from .automation_guard import narrow_import_guard
@@ -123,7 +123,14 @@ class SampleExcelService(models.AbstractModel):
             raise UserError(self.env._('Choose a scope with 1 to 2000 sample lines.'))
         order = 'sequence' if 'sequence' in lines._fields else 'id'
         lines = lines.sorted(key=lambda line: (line.supplier_id.display_name or '', line[order], line.id))
-        return [self._row(line, secrets.token_urlsafe(24), image=True) for line in lines]
+        rows, image_bytes = [], 0
+        for line in lines.with_context(prefetch_fields=False):
+            row = self._row(line, secrets.token_urlsafe(24), image=True)
+            image_bytes += sum(len(row.get(key) or b'') for key in IMAGE_KEYS)
+            if image_bytes > MAX_IMAGE_DATA:
+                raise UserError(self.env._('Image data exceeds the export limit. Export a smaller scope or use smaller source photos.'))
+            rows.append(row)
+        return rows
 
     @api.model
     def _current_rows(self, request, baselines):

@@ -15,6 +15,7 @@ from odoo.tests import TransactionCase, new_test_user, tagged
 
 from ..core.constants import COLUMNS, SCHEMA, V2_COLUMNS, V2_SCHEMA
 from ..core.workbook import build_workbook
+from ..models import service as service_module
 
 
 @tagged('post_install', '-at_install')
@@ -137,6 +138,13 @@ class TestSampleExcelSync(TransactionCase):
         self.assertEqual(self.line.factory_comment, 'Image quality verified')
         with Image.open(io.BytesIO(base64.b64decode(self.line.x_product_image))) as thumbnail:
             self.assertLessEqual(max(thumbnail.size), 128)
+
+    def test_image_collection_stops_at_cumulative_budget(self):
+        picture = io.BytesIO()
+        Image.new('RGB', (400, 200), 'green').save(picture, 'PNG')
+        self.product.image_1920 = base64.b64encode(picture.getvalue())
+        with patch.object(service_module, 'MAX_IMAGE_DATA', 1), self.assertRaises(UserError):
+            self._export(self.factory)
 
     def _v2_file(self, raw):
         original = load_workbook(io.BytesIO(raw))

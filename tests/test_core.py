@@ -4,6 +4,7 @@ import sys
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 from zipfile import ZIP_DEFLATED, ZipFile
 from xml.etree.ElementTree import fromstring
 
@@ -214,6 +215,14 @@ class WorkbookTests(unittest.TestCase):
         self.assertEqual((sheet._images[0].width, sheet._images[0].height), (1200, 800))
         with ZipFile(io.BytesIO(raw)) as archive:
             self.assertIn(original, [archive.read(n) for n in archive.namelist() if n.startswith('xl/media/')])
+
+    def test_combined_image_data_rejected_before_building_archive(self):
+        photo = io.BytesIO()
+        Image.new('RGB', (32, 32), 'green').save(photo, 'PNG')
+        original = photo.getvalue()
+        with patch('sync_core.workbook.MAX_IMAGE_DATA', len(original) * 2 - 1, create=True):
+            with self.assertRaisesRegex(ValueError, 'Image data exceeds'):
+                build_workbook('SMP-DEMO', 'export', [sample(image=original, remark_image=original)])
 
     def test_previous_ten_column_file_still_imports(self):
         raw = v2_file(self.rows)

@@ -11,7 +11,7 @@ from PIL import Image, UnidentifiedImageError
 from xlsxwriter.image import Image as DrawingImage
 
 from .constants import (COLUMNS, EDITABLE, IMAGE_KEYS, LAYOUTS,
-                        MAX_EXPANDED, MAX_FILE, MAX_ROWS, MAX_TEXT, SCHEMA)
+                        MAX_EXPANDED, MAX_FILE, MAX_IMAGE_DATA, MAX_ROWS, MAX_TEXT, SCHEMA)
 
 
 def _text(value):
@@ -64,6 +64,8 @@ def _thumbnail(raw, size=(110, 110), preserve_original=False):
 def build_workbook(request_name, batch_token, rows):
     if not rows or len(rows) > MAX_ROWS:
         raise ValueError(f'Export requires between 1 and {MAX_ROWS} sample lines.')
+    if sum(len(row.get(key) or b'') for row in rows for key in IMAGE_KEYS) > MAX_IMAGE_DATA:
+        raise ValueError('Image data exceeds the export limit. Export a smaller scope or use smaller source photos.')
     out = io.BytesIO()
     book = xlsxwriter.Workbook(out, {'in_memory': True, 'strings_to_formulas': False,
                                    'strings_to_urls': False})
